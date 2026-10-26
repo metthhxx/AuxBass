@@ -1,0 +1,35 @@
+name: aux_player
+description: "AuxBass Android player for Telegram music"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.4.0
+  shared_preferences: ^2.2.2
+  url_launcher: ^6.2.5
+  cupertino_icons: ^1.0.6
+  just_audio: ^0.9.36
+  audio_service: ^0.18.12
+  audio_session: ^0.1.25
+  cached_network_image: ^3.3.1
+  path_provider: ^2.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: Minecraft
+      fonts:
+        - asset: assets/fonts/Minecraft.ttf
+        - asset: assets/fonts/Minecraft-Bold.ttf
+          weight: 700
