@@ -8,13 +8,24 @@ import 'api_service.dart';
 
 /// Глобальный обработчик воспроизведения аудио с поддержкой системных уведомлений
 class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player = AudioPlayer(
+    audioLoadConfiguration: const AudioLoadConfiguration(
+      androidLoadControl: AndroidLoadControl(
+        minBufferDuration: Duration(seconds: 30),
+        maxBufferDuration: Duration(seconds: 120),
+        bufferForPlaybackDuration: Duration(milliseconds: 1500),
+        bufferForPlaybackAfterRebufferDuration: Duration(seconds: 3),
+        prioritizeTimeOverSizeThresholds: true,
+      ),
+    ),
+  );
   final ApiService _apiService = ApiService();
 
   List<Track> _queue = [];
   int _currentIndex = -1;
   bool _isShuffle = false;
   LoopMode _loopMode = LoopMode.off;
+  int _sessionCounter = 0;
 
   final ValueNotifier<Track?> currentTrackNotifier = ValueNotifier<Track?>(null);
   final ValueNotifier<List<Track>> queueNotifier = ValueNotifier<List<Track>>([]);
@@ -64,40 +75,11 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   void _listenToPlayerEvents() {
     // Синхронизация состояния плеера с системным AudioService (шторка уведомлений Android)
-    _player.playbackEventStream.listen((PlaybackEvent event) {
-      final playing = _player.playing;
-      playbackState.add(
-        playbackState.value.copyWith(
-          controls: [
-            MediaControl.skipToPrevious,
-            if (playing) MediaControl.pause else MediaControl.play,
-            MediaControl.skipToNext,
-            MediaControl.stop,
-          ],
-          systemActions: const {
-            MediaAction.seek,
-            MediaAction.seekForward,
-            MediaAction.seekBackward,
-          },
-          androidCompactActionIndices: const [0, 1, 2],
-          processingState: const {
-            ProcessingState.idle: AudioProcessingState.idle,
-            ProcessingState.loading: AudioProcessingState.loading,
-            ProcessingState.buffering: AudioProcessingState.buffering,
-            ProcessingState.ready: AudioProcessingState.ready,
-            ProcessingState.completed: AudioProcessingState.completed,
-          }[_player.processingState]!,
-          playing: playing,
-          updatePosition: _player.position,
-          bufferedPosition: _player.bufferedPosition,
-          speed: _player.speed,
-          queueIndex: _currentIndex,
-        ),
-      );
-    });
+    _player.playbackEventStream.listen((_) => _broadcastState());
 
-    // Автоматический переход к следующему треку при окончании
+    // Отслеживание изменений состояния и автоматический переход к следующему треку
     _player.playerStateStream.listen((state) {
+      _broadcastState();
       if (state.processingState == ProcessingState.completed) {
         if (_loopMode == LoopMode.one) {
           seek(Duration.zero);
@@ -107,6 +89,56 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         }
       }
     });
+  }
+
+  void _broadcastState() {
+    final playing = _player.playing;
+    final track = currentTrack;
+
+    AudioProcessingState processingState;
+    switch (_player.processingState) {
+      case ProcessingState.idle:
+        // Если трек выбран или загружается — не шлем idle, чтобы Android не убивал службу и шторку
+        processingState = track != null
+            ? AudioProcessingState.loading
+            : AudioProcessingState.idle;
+        break;
+      case ProcessingState.loading:
+        processingState = AudioProcessingState.loading;
+        break;
+      case ProcessingState.buffering:
+        processingState = AudioProcessingState.buffering;
+        break;
+      case ProcessingState.ready:
+        processingState = AudioProcessingState.ready;
+        break;
+      case ProcessingState.completed:
+        processingState = AudioProcessingState.completed;
+        break;
+    }
+
+    playbackState.add(
+      PlaybackState(
+        controls: [
+          MediaControl.skipToPrevious,
+          if (playing) MediaControl.pause else MediaControl.play,
+          MediaControl.skipToNext,
+          MediaControl.stop,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 2],
+        processingState: processingState,
+        playing: playing,
+        updatePosition: _player.position,
+        bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
+        queueIndex: _currentIndex,
+      ),
+    );
   }
 
   /// Установить очередь воспроизведения и начать проигрывать с указанного индекса
@@ -137,39 +169,65 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     final track = currentTrack;
     if (track == null) return;
 
+    final sessionId = ++_sessionCounter;
     currentTrackNotifier.value = track;
 
-    // Обновляем информацию в шторке уведомлений и на экране блокировки Android
-    mediaItem.add(
-      MediaItem(
-        id: track.id.toString(),
-        album: track.albumName ?? 'AuxBass',
-        title: track.title,
-        artist: track.artist,
-        duration: Duration(seconds: track.duration),
-        artUri: track.fullCoverUrl != null ? Uri.parse(track.fullCoverUrl!) : null,
-      ),
+    final item = MediaItem(
+      id: track.id.toString(),
+      album: track.albumName ?? 'AuxBass',
+      title: track.title,
+      artist: track.artist,
+      duration: Duration(seconds: track.duration),
+      artUri: track.fullCoverUrl != null ? Uri.parse(track.fullCoverUrl!) : null,
     );
 
+    // Сразу передаем информацию о треке в MediaItem шторки Android
+    mediaItem.add(item);
+    _broadcastState();
+
     try {
+      // Активируем аудио-сессию
+      final session = await AudioSession.instance;
+      await session.setActive(true);
+
       // Запрашиваем актуальную ссылку на аудиопоток
       final streamUrl = await _apiService.getStreamUrl(track.id);
 
-      await _player.stop();
-      await _player.setUrl(streamUrl);
+      // Если за время сетевого запроса пользователь уже переключил трек — прерываем
+      if (sessionId != _sessionCounter) return;
+
+      // Загружаем аудио-источник без вызова _player.stop(), чтобы не сбрасывать сервис
+      await _player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(streamUrl),
+          headers: const {
+            'User-Agent': 'AuxBass/1.0.0 (Linux; Android 14; Mobile)',
+          },
+          tag: item,
+        ),
+        preload: true,
+      );
+
+      if (sessionId != _sessionCounter) return;
+
       await _player.play();
 
       // Фиксируем воспроизведение (скробблинг)
       _apiService.recordPlay(track.id);
     } catch (e) {
       debugPrint('[AudioPlayerHandler] Ошибка воспроизведения трека: $e');
-      // При ошибке переходим к следующему треку в очереди
-      skipToNext();
+      if (sessionId == _sessionCounter) {
+        skipToNext();
+      }
     }
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    final session = await AudioSession.instance;
+    await session.setActive(true);
+    return _player.play();
+  }
 
   @override
   Future<void> pause() => _player.pause();
@@ -177,6 +235,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> stop() async {
     await _player.stop();
+    playbackState.add(
+      playbackState.value.copyWith(
+        processingState: AudioProcessingState.idle,
+        playing: false,
+      ),
+    );
     return super.stop();
   }
 

@@ -24,9 +24,12 @@ void main() async {
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'ru.ganj4craft.aux.channel.audio',
       androidNotificationChannelName: 'AuxBass Music',
+      androidNotificationChannelDescription: 'Воспроизведение музыки AuxBass',
       androidNotificationOngoing: false,
-      androidStopForegroundOnPause: true,
+      androidStopForegroundOnPause: false,
       androidNotificationIcon: 'drawable/ic_notification',
+      artDownscaleWidth: 512,
+      artDownscaleHeight: 512,
     ),
   );
 

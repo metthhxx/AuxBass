@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/global_user.dart';
 import '../models/paged_tracks.dart';
@@ -74,7 +75,37 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAllData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdates(manual: false);
+      _checkNotificationPermissionStatus();
     });
+  }
+
+  Future<void> _checkNotificationPermissionStatus() async {
+    try {
+      final bool? enabled = await const MethodChannel('ru.ganj4craft.aux/display')
+          .invokeMethod('areNotificationsEnabled');
+      if (enabled == false && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppTheme.bg2,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: const Text(
+              'Для плеера в шторке включите уведомления',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+            action: SnackBarAction(
+              label: 'Включить',
+              textColor: AppTheme.accent,
+              onPressed: () {
+                const MethodChannel('ru.ganj4craft.aux/display')
+                    .invokeMethod('openNotificationSettings');
+              },
+            ),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   @override
@@ -321,20 +352,62 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF5500).withAlpha(40),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.cloud_sync_rounded, color: Color(0xFFFF7700), size: 24),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  title: const Text('Синхронизация с SoundCloud', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                  subtitle: const Text('Импорт треков и плейлистов из SoundCloud', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                  trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showSoundCloudDialog();
-                  },
+                  child: const Icon(Icons.cloud_sync_rounded, color: Color(0xFFFF7700), size: 24),
                 ),
-                const SizedBox(height: 8),
+                title: const Text('Синхронизация с SoundCloud', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                subtitle: const Text('Импорт треков и плейлистов из SoundCloud', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showSoundCloudDialog();
+                },
+              ),
+              const SizedBox(height: 8),
+
+              // Шторка плеера и уведомления
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withAlpha(35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.notifications_active_rounded, color: AppTheme.accentLight, size: 22),
+                ),
+                title: const Text('Шторка плеера и уведомления', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                subtitle: const Text('Настройки показа плеера в шторке Android', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('openNotificationSettings');
+                },
+              ),
+              const SizedBox(height: 8),
+
+              // Фоновое воспроизведение (Батарея)
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withAlpha(35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.battery_charging_full_rounded, color: Colors.amber, size: 22),
+                ),
+                title: const Text('Фоновое воспроизведение', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                subtitle: const Text('Отключить ограничения батареи при выключенном экране', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('requestIgnoreBatteryOptimizations');
+                },
+              ),
+              const SizedBox(height: 8),
 
                 // Кнопка перехода в бота
                 ListTile(
@@ -371,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Icon(Icons.system_update_rounded, color: AppTheme.accentLight, size: 22),
                   ),
                   title: const Text('Обновление приложения', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                  subtitle: const Text('Версия 1.0.0 • Проверить обновления', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  subtitle: const Text('Версия 1.0.1 • Проверить обновления', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   onTap: () {
