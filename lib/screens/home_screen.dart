@@ -409,6 +409,27 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 8),
 
+              // RGB-кольцо Aicy (Meizu)
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.purpleAccent.withAlpha(35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.circle_outlined, color: Colors.purpleAccent, size: 22),
+                ),
+                title: const Text('RGB-кольцо Aicy (Meizu)', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                subtitle: const Text('Светомузыка в ритм треков при положении экраном вниз', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('openMeizuRingSettings');
+                },
+              ),
+              const SizedBox(height: 8),
+
                 // Кнопка перехода в бота
                 ListTile(
                   leading: Container(

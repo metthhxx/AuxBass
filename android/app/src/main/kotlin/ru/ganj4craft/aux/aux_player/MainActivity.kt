@@ -91,6 +91,26 @@ class MainActivity : AudioServiceActivity() {
         return true
     }
 
+    private fun isMeizuDevice(): Boolean {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        return manufacturer.contains("meizu") || brand.contains("meizu")
+    }
+
+    private fun openMeizuRingSettings(): Boolean {
+        return try {
+            val intent = Intent().apply {
+                setClassName("com.android.settings", "com.meizu.settings.MzSettingsActivity\$FlymeBreatheLightSettingsActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     private fun requestIgnoreBatteryOptimizations() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
@@ -156,6 +176,12 @@ class MainActivity : AudioServiceActivity() {
                 "requestIgnoreBatteryOptimizations" -> {
                     requestIgnoreBatteryOptimizations()
                     result.success(true)
+                }
+                "isMeizuDevice" -> {
+                    result.success(isMeizuDevice())
+                }
+                "openMeizuRingSettings" -> {
+                    result.success(openMeizuRingSettings())
                 }
                 "installApk" -> {
                     val filePath = call.argument<String>("filePath")
