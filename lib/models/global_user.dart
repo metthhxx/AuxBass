@@ -16,14 +16,27 @@ class GlobalUser {
   String? get fullAvatarUrl {
     if (avatarUrl != null && avatarUrl!.trim().isNotEmpty) {
       final s = avatarUrl!.trim();
-      if (s.startsWith('http://') || s.startsWith('https://')) return s;
-      if (s.startsWith('/')) return 'https://aux.ganj4craft.ru$s';
-      return 'https://aux.ganj4craft.ru/$s';
+      if (s != 'null' && s != 'undefined') {
+        if (s.startsWith('http://') || s.startsWith('https://')) {
+          if (s.contains('t.me/i/userpic')) {
+            final regMatch = RegExp(r'/userpic/\d+/([^./?]+)').firstMatch(s);
+            final uName = (username != null && username!.trim().isNotEmpty)
+                ? username!.replaceFirst('@', '').trim()
+                : regMatch?.group(1);
+            if (uName != null && uName.isNotEmpty) {
+              return 'https://unavatar.io/telegram/$uName';
+            }
+          }
+          return s;
+        }
+        if (s.startsWith('/')) return 'https://aux.ganj4craft.ru$s';
+        return 'https://aux.ganj4craft.ru/$s';
+      }
     }
     if (username != null && username!.isNotEmpty) {
       final clean = username!.replaceFirst('@', '').trim();
       if (clean.isNotEmpty) {
-        return 'https://t.me/i/userpic/320/$clean.jpg';
+        return 'https://unavatar.io/telegram/$clean';
       }
     }
     return null;

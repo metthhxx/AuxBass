@@ -441,7 +441,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Color? backgroundColor,
     Color? textColor,
   }) {
-    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U';
+    final cleanName = displayName.replaceFirst(RegExp(r'^@+'), '').trim();
+    final initial = cleanName.isNotEmpty ? cleanName.characters.first.toUpperCase() : 'U';
     final bg = backgroundColor ?? AppTheme.accent;
     final fg = textColor ?? AppTheme.accentText;
 
@@ -2424,7 +2425,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             children: [
               _buildUserAvatar(
-                avatarUrl: widget.user.photoUrl,
+                avatarUrl: widget.user.fullAvatarUrl,
                 displayName: widget.user.displayName,
                 radius: 26,
                 fontSize: 18,
@@ -2593,7 +2594,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (uploader != null) _openUserProfile(uploader.id, initialUser: uploader);
                       },
                       child: _buildUserAvatar(
-                        avatarUrl: uploader?.photoUrl,
+                        avatarUrl: uploader?.fullAvatarUrl,
                         displayName: uploader?.displayName ?? 'Кент',
                         radius: 20,
                         fontSize: 14,
@@ -2684,14 +2685,16 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             leading: _buildUserAvatar(
-              avatarUrl: u.photoUrl,
+              avatarUrl: u.fullAvatarUrl,
               displayName: u.displayName,
               radius: 22,
               fontSize: 16,
             ),
             title: Text(u.displayName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
             subtitle: Text(
-              u.username != null ? '@${u.username}' : '${u.trackCount} треков',
+              (u.username != null && u.username!.trim().isNotEmpty)
+                  ? '@${u.username!.replaceFirst('@', '').trim()}'
+                  : '${u.trackCount} треков',
               style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             trailing: Row(
@@ -2740,14 +2743,16 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             leading: _buildUserAvatar(
-              avatarUrl: u.photoUrl,
+              avatarUrl: u.fullAvatarUrl,
               displayName: u.displayName,
               radius: 22,
               fontSize: 16,
             ),
             title: Text(u.displayName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
             subtitle: Text(
-              u.username != null ? '@${u.username}' : '${u.trackCount} треков',
+              (u.username != null && u.username!.trim().isNotEmpty)
+                  ? '@${u.username!.replaceFirst('@', '').trim()}'
+                  : '${u.trackCount} треков',
               style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             trailing: Row(
@@ -2798,8 +2803,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final results = _kentySearchQuery.isNotEmpty ? _socialSearchResults : _globalUsers.map((g) => SocialUser(
       id: g.id,
       username: g.username,
+      rawDisplayName: g.displayName,
       customNickname: g.displayName,
-      photoUrl: g.fullAvatarUrl,
+      photoUrl: g.avatarUrl,
       trackCount: g.uploadCount,
       isFollowing: _followingList.any((f) => f.id == g.id),
     )).toList();
@@ -2860,7 +2866,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                         leading: _buildUserAvatar(
-                          avatarUrl: u.photoUrl,
+                          avatarUrl: u.fullAvatarUrl,
                           displayName: u.displayName,
                           radius: 22,
                           fontSize: 16,
@@ -2887,7 +2893,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                         subtitle: Text(
-                          u.username != null ? '@${u.username}' : '${u.trackCount} треков',
+                          (u.username != null && u.username!.trim().isNotEmpty)
+                              ? '@${u.username!.replaceFirst('@', '').trim()}'
+                              : '${u.trackCount} треков',
                           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                         ),
                         trailing: isMe

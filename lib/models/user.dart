@@ -35,20 +35,31 @@ class User {
     final raw = customAvatarUrl ?? photoUrl ?? avatarUrl;
     if (raw != null && raw.trim().isNotEmpty) {
       final s = raw.trim();
-      if (s.startsWith('http://') || s.startsWith('https://')) {
-        return s;
+      if (s != 'null' && s != 'undefined') {
+        if (s.startsWith('http://') || s.startsWith('https://')) {
+          if (s.contains('t.me/i/userpic')) {
+            final regMatch = RegExp(r'/userpic/\d+/([^./?]+)').firstMatch(s);
+            final uName = (username != null && username!.trim().isNotEmpty)
+                ? username!.replaceFirst('@', '').trim()
+                : regMatch?.group(1);
+            if (uName != null && uName.isNotEmpty) {
+              return 'https://unavatar.io/telegram/$uName';
+            }
+          }
+          return s;
+        }
+        if (s.startsWith('/')) {
+          return 'https://aux.ganj4craft.ru$s';
+        }
+        return 'https://aux.ganj4craft.ru/$s';
       }
-      if (s.startsWith('/')) {
-        return 'https://aux.ganj4craft.ru$s';
-      }
-      return 'https://aux.ganj4craft.ru/$s';
     }
 
-    // Если прямого URL аватара нет в профиле, берем Telegram юзерпик по username
+    // Если прямого URL аватара нет в профиле, берем Telegram юзерпик по username через unavatar.io
     if (username != null && username!.isNotEmpty) {
       final clean = username!.replaceFirst('@', '').trim();
       if (clean.isNotEmpty) {
-        return 'https://t.me/i/userpic/320/$clean.jpg';
+        return 'https://unavatar.io/telegram/$clean';
       }
     }
     return null;

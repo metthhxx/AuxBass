@@ -22,6 +22,8 @@ class FeedDrop {
       user = SocialUser.fromJson(json['uploader'] as Map<String, dynamic>);
     } else if (json['user'] is Map<String, dynamic>) {
       user = SocialUser.fromJson(json['user'] as Map<String, dynamic>);
+    } else if (json['user_id'] != null || json['uploader_id'] != null || json['username'] != null || json['display_name'] != null) {
+      user = SocialUser.fromJson(json);
     }
 
     final rawTracks = json['tracks'];
@@ -34,6 +36,8 @@ class FeedDrop {
       }
     } else if (json['track'] is Map<String, dynamic>) {
       tracksList.add(Track.fromJson(json['track'] as Map<String, dynamic>));
+    } else if (json['file_name'] != null || json['title'] != null) {
+      tracksList.add(Track.fromJson(json));
     }
 
     return FeedDrop(

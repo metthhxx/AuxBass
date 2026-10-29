@@ -154,19 +154,37 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ],
                   ),
                   child: ClipOval(
-                    child: user.photoUrl != null
+                    child: user.fullAvatarUrl != null
                         ? CachedNetworkImage(
-                            imageUrl: user.photoUrl!,
+                            imageUrl: user.fullAvatarUrl!,
                             fit: BoxFit.cover,
-                            placeholder: (_, __) => Container(color: AppTheme.bg2),
+                            placeholder: (_, __) => Container(
+                              color: AppTheme.bg3,
+                              child: Center(
+                                child: Text(
+                                  user.displayName.replaceFirst(RegExp(r'^@+'), '').trim().characters.firstOrNull?.toUpperCase() ?? 'U',
+                                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.accentLight),
+                                ),
+                              ),
+                            ),
                             errorWidget: (_, __, ___) => Container(
                               color: AppTheme.bg3,
-                              child: const Icon(Icons.person_rounded, size: 50, color: AppTheme.textMuted),
+                              child: Center(
+                                child: Text(
+                                  user.displayName.replaceFirst(RegExp(r'^@+'), '').trim().characters.firstOrNull?.toUpperCase() ?? 'U',
+                                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.accentLight),
+                                ),
+                              ),
                             ),
                           )
                         : Container(
                             color: AppTheme.bg3,
-                            child: const Icon(Icons.person_rounded, size: 50, color: AppTheme.textMuted),
+                            child: Center(
+                              child: Text(
+                                user.displayName.replaceFirst(RegExp(r'^@+'), '').trim().characters.firstOrNull?.toUpperCase() ?? 'U',
+                                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.accentLight),
+                              ),
+                            ),
                           ),
                   ),
                 ),
@@ -182,10 +200,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                if (user.username != null && user.username!.isNotEmpty) ...[
+                if (user.username != null && user.username!.trim().isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    '@${user.username}',
+                    '@${user.username!.replaceFirst('@', '').trim()}',
                     style: const TextStyle(fontSize: 14, color: AppTheme.accentLight),
                   ),
                 ],
