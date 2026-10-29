@@ -901,7 +901,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'settings',
                 child: Row(
@@ -1099,7 +1098,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Ваша музыка из Telegram всегда с вами',
+                        'всем привет я ауе',
                         style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                       ),
                     ],

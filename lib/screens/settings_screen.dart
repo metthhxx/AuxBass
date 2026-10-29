@@ -377,13 +377,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: const Icon(Icons.album_rounded, color: Color(0xFF00FF66), size: 20),
                       ),
                       title: const Text(
-                        'DJX-4000 (Виниловая вертушка как на сайте)',
+                        'DJX-4000 (Виниловая вертушка)',
                         style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
                       ),
                       subtitle: const Padding(
                         padding: EdgeInsets.only(top: 4),
                         child: Text(
-                          'Точная копия плеера со скриншота: вращающийся винил, тонарм, CRT-дисплей трека, DJ-кнопки SYNC/CUE/LOOP и ползунок громкости.',
+                          'Вращающийся винил, тонарм, CRT-дисплей трека, DJ-кнопки SYNC/CUE/LOOP и ползунок громкости.',
                           style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                         ),
                       ),
