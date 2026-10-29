@@ -41,6 +41,7 @@ class UpdateService {
       receiveTimeout: const Duration(seconds: 30),
       headers: {
         'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'AuxBass-App/$currentVersion',
       },
     ),
   );
