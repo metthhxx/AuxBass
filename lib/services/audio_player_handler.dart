@@ -8,17 +8,7 @@ import 'api_service.dart';
 
 /// Глобальный обработчик воспроизведения аудио с поддержкой системных уведомлений
 class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player = AudioPlayer(
-    audioLoadConfiguration: const AudioLoadConfiguration(
-      androidLoadControl: AndroidLoadControl(
-        minBufferDuration: Duration(seconds: 30),
-        maxBufferDuration: Duration(seconds: 120),
-        bufferForPlaybackDuration: Duration(milliseconds: 1500),
-        bufferForPlaybackAfterRebufferDuration: Duration(seconds: 3),
-        prioritizeTimeOverSizeThresholds: true,
-      ),
-    ),
-  );
+  final AudioPlayer _player = AudioPlayer();
   final ApiService _apiService = ApiService();
 
   List<Track> _queue = [];
@@ -77,15 +67,21 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     // Синхронизация состояния плеера с системным AudioService (шторка уведомлений Android)
     _player.playbackEventStream.listen((_) => _broadcastState());
 
-    // Отслеживание изменений состояния и автоматический переход к следующему треку
+    // Отслеживание изменений состояния и автоматический переход к следующему треку только при реальном окончании
     _player.playerStateStream.listen((state) {
       _broadcastState();
       if (state.processingState == ProcessingState.completed) {
-        if (_loopMode == LoopMode.one) {
-          seek(Duration.zero);
-          play();
-        } else {
-          skipToNext();
+        final pos = _player.position;
+        final dur = _player.duration;
+        // Переходим к следующему только если трек действительно доиграл до конца
+        final isFinished = dur != null && dur > Duration.zero && (dur - pos).inSeconds <= 3;
+        if (isFinished) {
+          if (_loopMode == LoopMode.one) {
+            seek(Duration.zero);
+            play();
+          } else {
+            skipToNext();
+          }
         }
       }
     });
@@ -196,17 +192,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       // Если за время сетевого запроса пользователь уже переключил трек — прерываем
       if (sessionId != _sessionCounter) return;
 
-      // Загружаем аудио-источник без вызова _player.stop(), чтобы не сбрасывать сервис
-      await _player.setAudioSource(
-        AudioSource.uri(
-          Uri.parse(streamUrl),
-          headers: const {
-            'User-Agent': 'AuxBass/1.0.0 (Linux; Android 14; Mobile)',
-          },
-          tag: item,
-        ),
-        preload: true,
-      );
+      // Прямая загрузка аудиопотока через нативный ExoPlayer (без прокси)
+      await _player.setUrl(streamUrl);
 
       if (sessionId != _sessionCounter) return;
 
@@ -216,9 +203,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       _apiService.recordPlay(track.id);
     } catch (e) {
       debugPrint('[AudioPlayerHandler] Ошибка воспроизведения трека: $e');
-      if (sessionId == _sessionCounter) {
-        skipToNext();
-      }
+      // Не вызываем автоматический skipToNext в цикле, чтобы плеер не скакал по трекам
+      _broadcastState();
     }
   }
 

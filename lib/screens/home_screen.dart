@@ -444,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Icon(Icons.system_update_rounded, color: AppTheme.accentLight, size: 22),
                   ),
                   title: const Text('Обновление приложения', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                  subtitle: const Text('Версия 1.0.1 • Проверить обновления', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  subtitle: const Text('Версия 1.0.2 • Проверить обновления', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   onTap: () {
@@ -613,7 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: Text(
                     'Обновление ${update.version}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
                   ),
                 ),
               ],
@@ -626,7 +626,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text('Размер: ${update.formattedSize}', style: const TextStyle(fontSize: 13, color: AppTheme.accentLight)),
                   const SizedBox(height: 10),
                 ],
-                const Text('Что нового:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const Text('Что нового:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                 const SizedBox(height: 6),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 180),
@@ -636,7 +636,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: SingleChildScrollView(
-                    child: Text(update.changelog, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                    child: Text(
+                      update.changelog,
+                      style: const TextStyle(fontSize: 13, color: Colors.white, height: 1.4),
+                    ),
                   ),
                 ),
                 if (downloadProgress != null) ...[
