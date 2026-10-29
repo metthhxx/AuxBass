@@ -743,6 +743,19 @@ class ApiService {
     }
   }
 
+  /// Получение текста песни (Lyrics)
+  Future<Map<String, dynamic>?> getTrackLyrics(int trackId) async {
+    try {
+      final response = await _dio.get('/tracks/$trackId/lyrics');
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Новые поступления треков на AuxBass (свежие добавления)
   Future<List<Track>> getGlobalRecent({int limit = 20}) async {
     try {

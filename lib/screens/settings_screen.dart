@@ -6,6 +6,7 @@ import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/audio_player_handler.dart';
 import '../services/auth_service.dart';
+import '../services/player_settings_service.dart';
 import '../services/update_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
@@ -354,6 +355,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+          ),
+
+          // Раздел: Стиль экрана плеера
+          _buildSectionHeader('Внешний вид и плеер'),
+          ValueListenableBuilder<PlayerStyle>(
+            valueListenable: PlayerSettingsService.playerStyleNotifier,
+            builder: (context, currentStyle, _) {
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: currentStyle == PlayerStyle.web ? AppTheme.accent.withAlpha(40) : AppTheme.bg3,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.public_rounded, color: AppTheme.accent, size: 20),
+                      ),
+                      title: const Text(
+                        'Веб-плеер AuxBass (как на сайте)',
+                        style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
+                      ),
+                      subtitle: const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Мобильная версия сайта aux.ganj4craft.ru: темный неоморфизм, изумрудный ореол обложки, встроенная громкость, текст песен и очередь.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                      trailing: Icon(
+                        currentStyle == PlayerStyle.web ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                        color: currentStyle == PlayerStyle.web ? AppTheme.accent : AppTheme.textMuted,
+                      ),
+                      onTap: () => PlayerSettingsService.setPlayerStyle(PlayerStyle.web),
+                    ),
+                    const Divider(height: 1, indent: 56, color: AppTheme.bg4),
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: currentStyle == PlayerStyle.native ? Colors.blueAccent.withAlpha(40) : AppTheme.bg3,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.phone_android_rounded, color: Colors.blueAccent, size: 20),
+                      ),
+                      title: const Text(
+                        'Стандартный плеер (Material You)',
+                        style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
+                      ),
+                      subtitle: const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Классический минималистичный Android-дизайн приложения.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                      trailing: Icon(
+                        currentStyle == PlayerStyle.native ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                        color: currentStyle == PlayerStyle.native ? AppTheme.accent : AppTheme.textMuted,
+                      ),
+                      onTap: () => PlayerSettingsService.setPlayerStyle(PlayerStyle.native),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
 
           // Раздел: Воспроизведение и кэш

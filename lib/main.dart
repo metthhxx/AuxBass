@@ -6,12 +6,16 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/audio_player_handler.dart';
 import 'services/auth_service.dart';
+import 'services/player_settings_service.dart';
 import 'theme/app_theme.dart';
 
 late final AudioPlayerHandler audioHandler;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализация настроек плеера (стиль отображения)
+  await PlayerSettingsService.init();
 
   // Принудительная блокировка портретной ориентации (без автоповорота)
   await SystemChrome.setPreferredOrientations([
