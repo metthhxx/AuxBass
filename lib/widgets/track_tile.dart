@@ -124,30 +124,47 @@ class _TrackTileState extends State<TrackTile> {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: widget.audioHandler != null
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ArtistDetailScreen(
-                                  artistName: track.artist,
-                                  audioHandler: widget.audioHandler!,
-                                ),
-                              ),
-                            );
-                          }
-                        : null,
-                    child: Text(
-                      track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: widget.audioHandler != null ? AppTheme.accentLight.withAlpha(220) : AppTheme.textSecondary,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: widget.audioHandler != null
+                              ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ArtistDetailScreen(
+                                        artistName: track.artist,
+                                        audioHandler: widget.audioHandler!,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
+                          child: Text(
+                            track.artist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: widget.audioHandler != null
+                                  ? AppTheme.accentLight.withAlpha(220)
+                                  : AppTheme.textSecondary,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 6),
+                      const Text('•', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.headphones_rounded, size: 12, color: AppTheme.textMuted),
+                      const SizedBox(width: 3),
+                      Text(
+                        track.formattedPlayCount,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -305,11 +305,23 @@ class _TrackActionSheetState extends State<TrackActionSheet> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textPrimary),
               ),
-              subtitle: Text(
-                '${track.artist} • ${track.formattedDuration}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              subtitle: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                    ),
+                  ),
+                  const Text(' • ', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                  Text(track.formattedDuration, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                  const Text(' • ', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                  const Icon(Icons.headphones_rounded, size: 13, color: AppTheme.textMuted),
+                  const SizedBox(width: 3),
+                  Text(track.formattedPlayCount, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                ],
               ),
               trailing: IconButton(
                 icon: _isLikeLoading

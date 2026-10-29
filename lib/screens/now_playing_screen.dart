@@ -161,14 +161,31 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            Text(
-                              currentTrack.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                color: AppTheme.textSecondary,
-                              ),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    currentTrack.artist,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.headphones_rounded, size: 14, color: AppTheme.textMuted),
+                                const SizedBox(width: 4),
+                                Text(
+                                  currentTrack.formattedPlayCount,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.textMuted,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),

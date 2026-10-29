@@ -149,17 +149,32 @@ class ApiService {
     }
   }
 
-  /// Получение глобального чарта / популярных треков AuxBass (первые 100)
-  Future<List<Track>> getGlobalTracks({int page = 1, int perPage = 100}) async {
+  /// Получение страницы глобального каталога треков (с метаданными total, page, perPage)
+  Future<PagedTracks> getGlobalTracksPage({int page = 1, int perPage = 100}) async {
     try {
       final response = await _dio.get(
         '/tracks/global',
         queryParameters: {'page': page, 'per_page': perPage},
       );
-      return _parseTracks(response.data);
+      final items = _parseTracks(response.data);
+      final total = (response.data is Map && response.data['total'] != null)
+          ? (response.data['total'] as num).toInt()
+          : items.length;
+      return PagedTracks(
+        total: total,
+        page: page,
+        perPage: perPage,
+        items: items,
+      );
     } catch (e) {
       throw Exception('Не удалось загрузить глобальные треки: $e');
     }
+  }
+
+  /// Получение глобального чарта / популярных треков AuxBass
+  Future<List<Track>> getGlobalTracks({int page = 1, int perPage = 100}) async {
+    final paged = await getGlobalTracksPage(page: page, perPage: perPage);
+    return paged.items;
   }
 
   /// Полнотекстовый поиск по всей базе треков на сервере (все 4800+ треков)

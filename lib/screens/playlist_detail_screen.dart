@@ -369,6 +369,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: _tracks.length,
+                            // ignore: deprecated_member_use
                             onReorder: _onReorder,
                             itemBuilder: (context, index) {
                               final track = _tracks[index];

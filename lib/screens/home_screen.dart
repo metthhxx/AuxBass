@@ -52,6 +52,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Track> _likedTracks = [];
   List<Track> _historyTracks = [];
   List<Track> _globalTracks = [];
+  int _globalTracksTotal = 0;
+  int _globalTracksPage = 1;
+  bool _isLoadingMoreGlobal = false;
+  bool _hasMoreGlobal = true;
+  final ScrollController _globalScrollController = ScrollController();
   List<Playlist> _playlists = [];
   List<GlobalUser> _globalUsers = [];
 
@@ -67,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Track> _serverSearchResults = [];
   bool _isSearchingServer = false;
   int _serverSearchTotal = 0;
+  int _serverSearchPage = 1;
+  bool _isLoadingMoreServerSearch = false;
+  bool _hasMoreServerSearch = false;
+  final ScrollController _serverSearchScrollController = ScrollController();
   String _lastServerQuery = '';
   Timer? _searchDebounce;
 
@@ -108,6 +117,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentNavIndex);
+    _globalScrollController.addListener(_onGlobalScroll);
+    _serverSearchScrollController.addListener(_onServerSearchScroll);
     _loadAllData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdates(manual: false);
@@ -148,6 +159,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _kentySearchDebounce?.cancel();
+    _globalScrollController.dispose();
+    _serverSearchScrollController.dispose();
     _pageController.dispose();
     _searchController.dispose();
     _kentySearchController.dispose();
@@ -165,19 +178,23 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait([
         _apiService.getLibraryTracksPage(page: 1, perPage: 100),
         _apiService.getHistoryTracks(),
-        _apiService.getGlobalTracks(page: 1, perPage: 100),
+        _apiService.getGlobalTracksPage(page: 1, perPage: 100),
         _apiService.getPlaylists(),
         _apiService.getGlobalUsers(),
       ]);
 
       final firstLib = results[0] as PagedTracks;
+      final firstGlobal = results[2] as PagedTracks;
 
       if (mounted) {
         setState(() {
           _allTracks = List.from(firstLib.items);
           _totalLibraryTracks = firstLib.total;
           _historyTracks = results[1] as List<Track>;
-          _globalTracks = results[2] as List<Track>;
+          _globalTracks = List.from(firstGlobal.items);
+          _globalTracksTotal = firstGlobal.total;
+          _globalTracksPage = 1;
+          _hasMoreGlobal = firstGlobal.hasMore;
           _playlists = results[3] as List<Playlist>;
           _globalUsers = results[4] as List<GlobalUser>;
           _isLoading = false;
@@ -401,12 +418,77 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _onGlobalScroll() {
+    if (_globalScrollController.hasClients &&
+        _globalScrollController.position.pixels >=
+            _globalScrollController.position.maxScrollExtent - 400) {
+      _loadMoreGlobalTracks();
+    }
+  }
+
+  Future<void> _loadMoreGlobalTracks() async {
+    if (_isLoadingMoreGlobal || !_hasMoreGlobal) return;
+    setState(() => _isLoadingMoreGlobal = true);
+    try {
+      final nextPage = _globalTracksPage + 1;
+      final paged = await _apiService.getGlobalTracksPage(page: nextPage, perPage: 100);
+      if (mounted) {
+        setState(() {
+          _globalTracksPage = nextPage;
+          _globalTracksTotal = paged.total;
+          _hasMoreGlobal = paged.hasMore;
+          final existingIds = _globalTracks.map((t) => t.id).toSet();
+          final newItems = paged.items.where((t) => !existingIds.contains(t.id)).toList();
+          _globalTracks.addAll(newItems);
+        });
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] Ошибка загрузки следующей страницы каталога: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingMoreGlobal = false);
+    }
+  }
+
+  void _onServerSearchScroll() {
+    if (_serverSearchScrollController.hasClients &&
+        _serverSearchScrollController.position.pixels >=
+            _serverSearchScrollController.position.maxScrollExtent - 400) {
+      _loadMoreServerSearch();
+    }
+  }
+
+  Future<void> _loadMoreServerSearch() async {
+    if (_isLoadingMoreServerSearch || !_hasMoreServerSearch || _searchQuery.isEmpty) return;
+    setState(() => _isLoadingMoreServerSearch = true);
+    try {
+      final nextPage = _serverSearchPage + 1;
+      final paged = await _apiService.searchGlobalTracks(_searchQuery, page: nextPage, perPage: 100);
+      if (mounted && _lastServerQuery == _searchQuery) {
+        setState(() {
+          _serverSearchPage = nextPage;
+          _serverSearchTotal = paged.total;
+          _hasMoreServerSearch = paged.hasMore;
+          final existingIds = _serverSearchResults.map((t) => t.id).toSet();
+          final newItems = paged.items.where((t) => !existingIds.contains(t.id)).toList();
+          _serverSearchResults.addAll(newItems);
+        });
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] Ошибка загрузки следующей страницы поиска: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingMoreServerSearch = false);
+    }
+  }
+
   /// Поиск по всем 4800+ трекам на сервере
   Future<void> _performServerSearch(String query) async {
     if (query.trim().isEmpty) {
       setState(() {
         _serverSearchResults = [];
         _serverSearchTotal = 0;
+        _serverSearchPage = 1;
+        _hasMoreServerSearch = false;
+        _isSearchingServer = false;
       });
       return;
     }
@@ -414,6 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _isSearchingServer = true;
+      _serverSearchPage = 1;
     });
 
     try {
@@ -423,12 +506,17 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _serverSearchResults = paged.items;
           _serverSearchTotal = paged.total;
+          _serverSearchPage = 1;
+          _hasMoreServerSearch = paged.hasMore;
           _isSearchingServer = false;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && _lastServerQuery == query) {
         setState(() {
+          _serverSearchResults = [];
+          _serverSearchTotal = 0;
+          _hasMoreServerSearch = false;
           _isSearchingServer = false;
         });
       }
@@ -1180,7 +1268,7 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             hintText: _searchSourceIndex == 0
                 ? 'Поиск в моей библиотеке...'
-                : 'Поиск по 4800+ трекам на сайте...',
+                : 'Поиск по ${_globalTracksTotal > 0 ? _globalTracksTotal : 4800}+ трекам на сайте...',
             hintStyle: WidgetStateProperty.all(const TextStyle(color: AppTheme.textMuted, fontSize: 14)),
             textStyle: WidgetStateProperty.all(const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
             leading: const Icon(Icons.search_rounded, color: AppTheme.accentLight),
@@ -1194,6 +1282,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       _searchQuery = '';
                       _serverSearchResults = [];
                       _serverSearchTotal = 0;
+                      _serverSearchPage = 1;
+                      _hasMoreServerSearch = false;
                     });
                   },
                 ),
@@ -1216,7 +1306,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(width: 8),
               _buildCategoryChip(
-                label: 'Треки на сайте (4800+)',
+                label: 'Треки на сайте (${_globalTracksTotal > 0 ? _globalTracksTotal : "4800+"})',
                 isSelected: _searchSourceIndex == 1,
                 onSelected: () {
                   setState(() => _searchSourceIndex = 1);
@@ -1392,6 +1482,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 1. Если поисковый запрос пустой: показываем кнопку Шафла по сайту, популярное, новинки и каталог
     if (_searchQuery.isEmpty) {
       return CustomScrollView(
+        controller: _globalScrollController,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
@@ -1465,7 +1556,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 172,
+                      height: 184,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         itemCount: _popularTracks.length,
@@ -1489,7 +1580,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 172,
+                      height: 184,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         itemCount: _recentTracks.length,
@@ -1502,8 +1593,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
 
                   const SizedBox(height: 20),
-                  const Text('🔥 Каталог треков AuxBass',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  Row(
+                    children: [
+                      const Text('🔥 Каталог треков AuxBass',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                      const SizedBox(width: 8),
+                      Text(
+                        '(${_globalTracks.length}${_globalTracksTotal > 0 ? " из $_globalTracksTotal" : ""})',
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1530,6 +1630,19 @@ class _HomeScreenState extends State<HomeScreen> {
               childCount: _globalTracks.length,
             ),
           ),
+          if (_isLoadingMoreGlobal)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.0),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(AppTheme.accent)),
+                  ),
+                ),
+              ),
+            ),
         ],
       );
     }
@@ -1567,7 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Найдено треков: $_serverSearchTotal',
+              Text('Найдено треков: $_serverSearchTotal (${_serverSearchResults.length} загружено)',
                   style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
               TextButton.icon(
                 onPressed: () {
@@ -1585,9 +1698,22 @@ class _HomeScreenState extends State<HomeScreen> {
             valueListenable: widget.audioHandler.currentTrackNotifier,
             builder: (context, current, _) {
               return ListView.builder(
+                controller: _serverSearchScrollController,
                 itemExtent: 66.0,
-                itemCount: _serverSearchResults.length,
+                itemCount: _serverSearchResults.length + (_isLoadingMoreServerSearch ? 1 : 0),
                 itemBuilder: (context, i) {
+                  if (i == _serverSearchResults.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(AppTheme.accent)),
+                        ),
+                      ),
+                    );
+                  }
                   final track = _serverSearchResults[i];
                   return TrackTile(
                     track: track,
@@ -1672,6 +1798,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
                   ),
+                  if (tr.playCount > 0) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(Icons.headphones_rounded, size: 10, color: AppTheme.textMuted),
+                        const SizedBox(width: 3),
+                        Text(
+                          tr.formattedPlayCount,
+                          style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

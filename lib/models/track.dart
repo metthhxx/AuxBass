@@ -6,6 +6,7 @@ class Track {
   final String? coverUrl;
   final String? albumName;
   final String? fileName;
+  final int playCount;
   bool isLiked;
 
   Track({
@@ -16,8 +17,21 @@ class Track {
     this.coverUrl,
     this.albumName,
     this.fileName,
+    this.playCount = 0,
     this.isLiked = false,
   });
+
+  /// Форматированное количество прослушиваний (например: 1.2k, 3.4M или 42)
+  String get formattedPlayCount {
+    if (playCount >= 1000000) {
+      final m = playCount / 1000000.0;
+      return '${m.toStringAsFixed(m >= 10 ? 0 : 1)}M';
+    } else if (playCount >= 1000) {
+      final k = playCount / 1000.0;
+      return '${k.toStringAsFixed(k >= 10 ? 0 : 1)}k';
+    }
+    return playCount.toString();
+  }
 
   /// Полная ссылка на обложку с учетом проксирования внешних ресурсов
   String? get fullCoverUrl {
@@ -52,6 +66,11 @@ class Track {
       cover ??= albumMap['cover_url'] as String?;
     }
 
+    final rawPlayCount = json['play_count'] ?? json['plays'] ?? json['playCount'];
+    final parsedPlayCount = (rawPlayCount is num)
+        ? rawPlayCount.toInt()
+        : int.tryParse(rawPlayCount?.toString() ?? '') ?? 0;
+
     return Track(
       id: json['id'] as int,
       title: (json['title'] as String?)?.trim().isNotEmpty == true
@@ -64,7 +83,32 @@ class Track {
       coverUrl: cover,
       albumName: album,
       fileName: json['file_name'] as String?,
+      playCount: parsedPlayCount,
       isLiked: json['is_liked'] as bool? ?? false,
+    );
+  }
+
+  Track copyWith({
+    int? id,
+    String? title,
+    String? artist,
+    int? duration,
+    String? coverUrl,
+    String? albumName,
+    String? fileName,
+    int? playCount,
+    bool? isLiked,
+  }) {
+    return Track(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      duration: duration ?? this.duration,
+      coverUrl: coverUrl ?? this.coverUrl,
+      albumName: albumName ?? this.albumName,
+      fileName: fileName ?? this.fileName,
+      playCount: playCount ?? this.playCount,
+      isLiked: isLiked ?? this.isLiked,
     );
   }
 
@@ -77,6 +121,7 @@ class Track {
       'cover_url': coverUrl,
       'album_name': albumName,
       'file_name': fileName,
+      'play_count': playCount,
       'is_liked': isLiked,
     };
   }
