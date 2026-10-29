@@ -2,10 +2,16 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/album.dart';
+import '../models/artist.dart';
+import '../models/feed_drop.dart';
 import '../models/global_user.dart';
+import '../models/music_tag.dart';
 import '../models/paged_tracks.dart';
 import '../models/playlist.dart';
+import '../models/social_user.dart';
 import '../models/track.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
@@ -15,7 +21,10 @@ import '../services/update_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/track_tile.dart';
+import 'album_detail_screen.dart';
+import 'artist_detail_screen.dart';
 import 'login_screen.dart';
+import 'user_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final User user;
@@ -62,11 +71,36 @@ class _HomeScreenState extends State<HomeScreen> {
   // Контроллер для свайпов между 5 вкладками
   late final PageController _pageController;
 
-  // Библиотека: фильтр подкатегорий (0 - Все треки, 1 - Плейлисты, 2 - История)
+  // Библиотека: фильтр подкатегорий (0 - Все треки, 1 - Плейлисты, 2 - Альбомы, 3 - Артисты, 4 - История)
   int _libraryFilterIndex = 0;
 
-  // Подписки: подкатегория (0 - Пользователи, 1 - Telegram-каналы)
-  int _subscriptionsFilterIndex = 0;
+  // --- 1. Кенты (Социалка и подписки) ---
+  List<FeedDrop> _feedDrops = [];
+  List<SocialUser> _followingList = [];
+  List<SocialUser> _followersList = [];
+  List<SocialUser> _socialSearchResults = [];
+  bool _isSocialLoading = false;
+  int _kentySubTab = 0; // 0 - Лента, 1 - Подписки, 2 - Подписчики, 3 - Поиск
+  final TextEditingController _kentySearchController = TextEditingController();
+  String _kentySearchQuery = '';
+  Timer? _kentySearchDebounce;
+
+  // --- 2. Альбомы и Артисты ---
+  List<Album> _libraryAlbums = [];
+  List<Album> _globalAlbums = [];
+  int _albumsScopeIndex = 0; // 0 - В медиатеке, 1 - Все на сайте
+  bool _isLoadingAlbums = false;
+
+  List<Artist> _libraryArtists = [];
+  List<Artist> _globalArtists = [];
+  int _artistsScopeIndex = 0; // 0 - В медиатеке, 1 - Все на сайте
+  bool _isLoadingArtists = false;
+
+  // --- 7. Жанры, теги и рекомендации ---
+  List<MusicTag> _searchTags = [];
+  List<String> _recentSearches = [];
+  List<Track> _popularTracks = [];
+  List<Track> _recentTracks = [];
 
   @override
   void initState() {
@@ -111,8 +145,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _kentySearchDebounce?.cancel();
     _pageController.dispose();
     _searchController.dispose();
+    _kentySearchController.dispose();
     super.dispose();
   }
 
@@ -148,6 +184,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // 2. В фоне выкачиваем все остальные страницы библиотеки (до 1000+ треков) и лайков
       _loadAllRemainingPages();
+
+      // 3. Загружаем социалку («Кенты»), теги и рекомендации
+      _loadSocialData();
+      _loadTagsAndRecommendations();
+      _loadRecentSearches();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -156,6 +197,154 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  // --- Социальные данные («Кенты») ---
+  Future<void> _loadSocialData() async {
+    setState(() => _isSocialLoading = true);
+    try {
+      final feedFuture = _apiService.getSocialFeed();
+      final followingFuture = _apiService.getFollowing();
+      final followersFuture = _apiService.getFollowers();
+
+      final res = await Future.wait([
+        feedFuture.catchError((_) => <FeedDrop>[]),
+        followingFuture.catchError((_) => <SocialUser>[]),
+        followersFuture.catchError((_) => <SocialUser>[]),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _feedDrops = res[0] as List<FeedDrop>;
+          _followingList = res[1] as List<SocialUser>;
+          _followersList = res[2] as List<SocialUser>;
+          _isSocialLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isSocialLoading = false);
+    }
+  }
+
+  void _searchKenty(String query) {
+    _kentySearchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _kentySearchQuery = '';
+        _socialSearchResults = [];
+      });
+      return;
+    }
+
+    _kentySearchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        final users = await _apiService.searchSocialUsers(query);
+        if (mounted && _kentySearchQuery == query.trim()) {
+          setState(() {
+            _socialSearchResults = users;
+          });
+        }
+      } catch (_) {}
+    });
+  }
+
+  // --- Альбомы и Артисты ---
+  Future<void> _loadAlbums() async {
+    setState(() => _isLoadingAlbums = true);
+    try {
+      final libAlb = await _apiService.getAlbums(scope: 'library');
+      final globAlb = await _apiService.getAlbums(scope: 'global');
+      if (mounted) {
+        setState(() {
+          _libraryAlbums = libAlb;
+          _globalAlbums = globAlb;
+          _isLoadingAlbums = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingAlbums = false);
+    }
+  }
+
+  Future<void> _loadArtists() async {
+    setState(() => _isLoadingArtists = true);
+    try {
+      final libArt = await _apiService.getArtists(scope: 'library');
+      final globArt = await _apiService.getArtists(scope: 'global');
+      if (mounted) {
+        setState(() {
+          _libraryArtists = libArt;
+          _globalArtists = globArt;
+          _isLoadingArtists = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingArtists = false);
+    }
+  }
+
+  // --- Теги, история поиска и рекомендации ---
+  Future<void> _loadTagsAndRecommendations() async {
+    try {
+      final tagsFuture = _apiService.getTags();
+      final popFuture = _apiService.getGlobalPopular(limit: 15);
+      final recFuture = _apiService.getGlobalRecent(limit: 15);
+
+      final res = await Future.wait([
+        tagsFuture.catchError((_) => <MusicTag>[]),
+        popFuture.catchError((_) => <Track>[]),
+        recFuture.catchError((_) => <Track>[]),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _searchTags = res[0] as List<MusicTag>;
+          _popularTracks = res[1] as List<Track>;
+          _recentTracks = res[2] as List<Track>;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadRecentSearches() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('auxbass_recent_searches') ?? [];
+      if (mounted) {
+        setState(() => _recentSearches = list);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveRecentSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = List<String>.from(_recentSearches);
+      list.remove(q);
+      list.insert(0, q);
+      if (list.length > 15) list.removeLast();
+      await prefs.setStringList('auxbass_recent_searches', list);
+      if (mounted) setState(() => _recentSearches = list);
+    } catch (_) {}
+  }
+
+  Future<void> _removeRecentSearch(String query) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = List<String>.from(_recentSearches)..remove(query);
+      await prefs.setStringList('auxbass_recent_searches', list);
+      if (mounted) setState(() => _recentSearches = list);
+    } catch (_) {}
+  }
+
+  Future<void> _clearRecentSearches() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auxbass_recent_searches');
+      if (mounted) setState(() => _recentSearches = []);
+    } catch (_) {}
   }
 
   void _loadAllRemainingPages() {
@@ -228,6 +417,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final paged = await _apiService.searchGlobalTracks(query, page: 1, perPage: 100);
       if (mounted && _lastServerQuery == query) {
+        _saveRecentSearch(query);
         setState(() {
           _serverSearchResults = paged.items;
           _serverSearchTotal = paged.total;
@@ -409,29 +599,63 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 8),
 
-              // RGB-кольцо Aicy (Meizu)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.purpleAccent.withAlpha(35),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.circle_outlined, color: Colors.purpleAccent, size: 22),
-                ),
-                title: const Text('RGB-кольцо Aicy (Meizu)', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                subtitle: const Text('Светомузыка в ритм треков при положении экраном вниз', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('openMeizuRingSettings');
+              // Кэш треков (Память и бесшовный переход)
+              FutureBuilder<String>(
+                future: widget.audioHandler.cacheService.getFormattedCacheSize(),
+                builder: (context, snapshot) {
+                  final cacheSize = snapshot.data ?? 'Подсчет...';
+                  return ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.cyan.withAlpha(35),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.storage_rounded, color: Colors.cyanAccent, size: 22),
+                    ),
+                    title: const Text('Кэш музыки и предзагрузка', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                    subtitle: Text('Занято: $cacheSize • Нажмите для очистки', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    trailing: const Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    onTap: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (dCtx) => AlertDialog(
+                          backgroundColor: AppTheme.bg2,
+                          title: const Text('Очистить кэш треков?', style: TextStyle(color: Colors.white)),
+                          content: const Text(
+                            'Все сохраненные для мгновенного и бесшовного воспроизведения файлы треков будут удалены с диска.',
+                            style: TextStyle(color: AppTheme.textSecondary),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dCtx, false),
+                              child: const Text('Отмена', style: TextStyle(color: AppTheme.textMuted)),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(dCtx, true),
+                              child: const Text('Очистить', style: TextStyle(color: Colors.redAccent)),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true) {
+                        await widget.audioHandler.cacheService.clearCache();
+                        if (context.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Кэш треков успешно очищен')),
+                          );
+                        }
+                      }
+                    },
+                  );
                 },
               ),
               const SizedBox(height: 8),
 
-                // Кнопка перехода в бота
-                ListTile(
+              // Кнопка перехода в бота
+              ListTile(
                   leading: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -766,7 +990,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           KeepAlivePage(child: _buildSearchTab()),
                           KeepAlivePage(child: _buildLibraryTab()),
                           KeepAlivePage(child: _buildFavoritesTab()),
-                          KeepAlivePage(child: _buildSubscriptionsTab()),
+                          KeepAlivePage(child: _buildKentyTab()),
                         ],
                       ),
           ),
@@ -830,9 +1054,9 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'Любимые',
             ),
             NavigationDestination(
-              icon: Icon(Icons.subscriptions_outlined),
-              selectedIcon: Icon(Icons.subscriptions_rounded),
-              label: 'Подписки',
+              icon: Icon(Icons.people_outline_rounded),
+              selectedIcon: Icon(Icons.people_rounded),
+              label: 'Кенты',
             ),
           ],
         ),
@@ -851,7 +1075,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 3:
         return 'Любимые треки';
       case 4:
-        return 'Подписки & Авторы';
+        return 'Кенты';
       default:
         return 'AuxBass';
     }
@@ -1052,7 +1276,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         // Поле поиска
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
           child: SearchBar(
             controller: _searchController,
             onChanged: (val) {
@@ -1100,7 +1324,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Переключатель источника поиска (Material You Chips)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
           child: Row(
             children: [
               _buildCategoryChip(
@@ -1122,7 +1346,95 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 6),
+
+        // Популярные теги и стили (#phonk, #lo-fi, #dnb и т.д.)
+        if (_searchTags.isNotEmpty)
+          Container(
+            height: 40,
+            margin: const EdgeInsets.only(top: 6, bottom: 2),
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              scrollDirection: Axis.horizontal,
+              itemCount: _searchTags.length,
+              itemBuilder: (context, idx) {
+                final tag = _searchTags[idx];
+                final isSelected = _searchQuery.toLowerCase() == tag.name.toLowerCase() ||
+                    _searchQuery.toLowerCase() == '#${tag.name.toLowerCase()}';
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6.0),
+                  child: ActionChip(
+                    label: Text('#${tag.name}'),
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? AppTheme.accentText : AppTheme.textPrimary,
+                    ),
+                    backgroundColor: isSelected ? AppTheme.accent : AppTheme.bg2,
+                    side: BorderSide(color: isSelected ? AppTheme.accent : AppTheme.bg4),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    onPressed: () {
+                      _searchController.text = tag.name;
+                      setState(() {
+                        _searchQuery = tag.name;
+                        _searchSourceIndex = 1; // Автоматически переключаем на поиск по сайту
+                      });
+                      _performServerSearch(tag.name);
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+
+        // История недавних поисковых запросов
+        if (_searchQuery.isEmpty && _recentSearches.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Row(
+              children: [
+                const Icon(Icons.history_rounded, size: 16, color: AppTheme.textMuted),
+                const SizedBox(width: 6),
+                const Text('Недавно искали:', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _recentSearches.take(6).map((term) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            label: Text(term, style: const TextStyle(fontSize: 11, color: AppTheme.textPrimary)),
+                            backgroundColor: AppTheme.bg2,
+                            side: const BorderSide(color: AppTheme.bg4),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            onPressed: () {
+                              _searchController.text = term;
+                              setState(() {
+                                _searchQuery = term;
+                                _searchSourceIndex = 1;
+                              });
+                              _performServerSearch(term);
+                            },
+                            onDeleted: () => _removeRecentSearch(term),
+                            deleteIconColor: AppTheme.textMuted,
+                            deleteIcon: const Icon(Icons.close_rounded, size: 14),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _clearRecentSearches,
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  child: const Text('Очистить', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                ),
+              ],
+            ),
+          ),
+
+        const SizedBox(height: 4),
 
         Expanded(
           child: _searchSourceIndex == 0
@@ -1194,13 +1506,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Серверный поиск по всем 4800+ трекам сайта AuxBass
   Widget _buildServerSearchBody() {
-    // 1. Если поисковый запрос пустой: показываем кнопку Шафла по сайту и популярные треки
+    // 1. Если поисковый запрос пустой: показываем кнопку Шафла по сайту, популярное, новинки и каталог
     if (_searchQuery.isEmpty) {
       return CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1257,6 +1569,55 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
+
+                  // Секция 1: Популярно на AuxBass
+                  if (_popularTracks.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    const Row(
+                      children: [
+                        Icon(Icons.local_fire_department_rounded, color: Colors.orangeAccent, size: 20),
+                        SizedBox(width: 6),
+                        Text('Популярно на AuxBass', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 172,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _popularTracks.length,
+                        itemBuilder: (context, idx) {
+                          final tr = _popularTracks[idx];
+                          return _buildTrackCard(tr, _popularTracks, idx);
+                        },
+                      ),
+                    ),
+                  ],
+
+                  // Секция 2: Свежие новинки каталога
+                  if (_recentTracks.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    const Row(
+                      children: [
+                        Icon(Icons.auto_awesome_rounded, color: AppTheme.accentLight, size: 19),
+                        SizedBox(width: 6),
+                        Text('Свежие новинки каталога', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 172,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _recentTracks.length,
+                        itemBuilder: (context, idx) {
+                          final tr = _recentTracks[idx];
+                          return _buildTrackCard(tr, _recentTracks, idx);
+                        },
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 20),
                   const Text('🔥 Каталог треков AuxBass',
                       style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
@@ -1358,11 +1719,88 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ================= 3. БИБЛИОТЕКА (ТРЕКИ + ПЛЕЙЛИСТЫ + ИСТОРИЯ) =================
+  Widget _buildTrackCard(Track tr, List<Track> queue, int index) {
+    return GestureDetector(
+      onTap: () => widget.audioHandler.playTrackList(queue, index),
+      child: Container(
+        width: 124,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.bg2,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: SizedBox(
+                    width: 124,
+                    height: 112,
+                    child: tr.fullCoverUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: tr.fullCoverUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(color: AppTheme.bg3),
+                            errorWidget: (_, __, ___) => Container(
+                              color: AppTheme.bg3,
+                              child: const Icon(Icons.music_note_rounded, color: AppTheme.textMuted),
+                            ),
+                          )
+                        : Container(
+                            color: AppTheme.bg3,
+                            child: const Icon(Icons.music_note_rounded, color: AppTheme.textMuted),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: AppTheme.accent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(7.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tr.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tr.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ================= 3. БИБЛИОТЕКА (ТРЕКИ + ПЛЕЙЛИСТЫ + АЛЬБОМЫ + АРТИСТЫ + ИСТОРИЯ) =================
   Widget _buildLibraryTab() {
     return Column(
       children: [
-        // Подкатегории: Все треки, Плейлисты, История (БЕЗ белой полоски!)
+        // Подкатегории: Все треки, Плейлисты, Альбомы, Артисты, История
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: SingleChildScrollView(
@@ -1384,9 +1822,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 8),
                 _buildCategoryChip(
-                  label: 'История (${_historyTracks.length})',
+                  label: 'Альбомы (${_albumsScopeIndex == 0 ? _libraryAlbums.length : _globalAlbums.length})',
                   isSelected: _libraryFilterIndex == 2,
-                  onSelected: () => setState(() => _libraryFilterIndex = 2),
+                  onSelected: () {
+                    setState(() => _libraryFilterIndex = 2);
+                    if (_libraryAlbums.isEmpty && _globalAlbums.isEmpty) _loadAlbums();
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                  label: 'Артисты (${_artistsScopeIndex == 0 ? _libraryArtists.length : _globalArtists.length})',
+                  isSelected: _libraryFilterIndex == 3,
+                  onSelected: () {
+                    setState(() => _libraryFilterIndex = 3);
+                    if (_libraryArtists.isEmpty && _globalArtists.isEmpty) _loadArtists();
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                  label: 'История (${_historyTracks.length})',
+                  isSelected: _libraryFilterIndex == 4,
+                  onSelected: () => setState(() => _libraryFilterIndex = 4),
                 ),
               ],
             ),
@@ -1399,7 +1855,263 @@ class _HomeScreenState extends State<HomeScreen> {
               ? _buildLibraryTracksList(_allTracks, 'В библиотеке пока нет треков')
               : _libraryFilterIndex == 1
                   ? _buildPlaylistsView()
-                  : _buildLibraryTracksList(_historyTracks, 'История прослушиваний пуста'),
+                  : _libraryFilterIndex == 2
+                      ? _buildAlbumsView()
+                      : _libraryFilterIndex == 3
+                          ? _buildArtistsView()
+                          : _buildLibraryTracksList(_historyTracks, 'История прослушиваний пуста'),
+        ),
+      ],
+    );
+  }
+
+  /// Вкладка Альбомы (В медиатеке / На сайте)
+  Widget _buildAlbumsView() {
+    final albums = _albumsScopeIndex == 0 ? _libraryAlbums : _globalAlbums;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          child: Row(
+            children: [
+              _buildCategoryChip(
+                label: 'В медиатеке (${_libraryAlbums.length})',
+                isSelected: _albumsScopeIndex == 0,
+                onSelected: () {
+                  setState(() => _albumsScopeIndex = 0);
+                  if (_libraryAlbums.isEmpty) _loadAlbums();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildCategoryChip(
+                label: 'Все на сайте (${_globalAlbums.length})',
+                isSelected: _albumsScopeIndex == 1,
+                onSelected: () {
+                  setState(() => _albumsScopeIndex = 1);
+                  if (_globalAlbums.isEmpty) _loadAlbums();
+                },
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoadingAlbums && albums.isEmpty
+              ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
+              : albums.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.album_outlined, size: 54, color: AppTheme.textMuted),
+                          const SizedBox(height: 12),
+                          const Text('Альбомов пока нет', style: TextStyle(color: AppTheme.textMuted)),
+                          const SizedBox(height: 12),
+                          FilledButton.tonal(
+                            onPressed: _loadAlbums,
+                            child: const Text('Загрузить альбомы'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                        childAspectRatio: 0.78,
+                      ),
+                      itemCount: albums.length,
+                      itemBuilder: (context, idx) {
+                        final alb = albums[idx];
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AlbumDetailScreen(
+                                  albumId: alb.id,
+                                  initialAlbum: alb,
+                                  audioHandler: widget.audioHandler,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.bg2,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: alb.coverUrl != null
+                                          ? CachedNetworkImage(
+                                              imageUrl: alb.coverUrl!,
+                                              fit: BoxFit.cover,
+                                              placeholder: (_, __) => Container(color: AppTheme.bg3),
+                                              errorWidget: (_, __, ___) => Container(
+                                                color: AppTheme.bg3,
+                                                child: const Icon(Icons.album_rounded, color: AppTheme.textMuted, size: 40),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: AppTheme.bg3,
+                                              child: const Icon(Icons.album_rounded, color: AppTheme.textMuted, size: 40),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(10.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        alb.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        alb.artist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                      ),
+                                      if (alb.year != null && alb.year! > 0)
+                                        Text(
+                                          '${alb.year}',
+                                          style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  /// Вкладка Артисты (В медиатеке / На сайте)
+  Widget _buildArtistsView() {
+    final artists = _artistsScopeIndex == 0 ? _libraryArtists : _globalArtists;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          child: Row(
+            children: [
+              _buildCategoryChip(
+                label: 'В медиатеке (${_libraryArtists.length})',
+                isSelected: _artistsScopeIndex == 0,
+                onSelected: () {
+                  setState(() => _artistsScopeIndex = 0);
+                  if (_libraryArtists.isEmpty) _loadArtists();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildCategoryChip(
+                label: 'Все на сайте (${_globalArtists.length})',
+                isSelected: _artistsScopeIndex == 1,
+                onSelected: () {
+                  setState(() => _artistsScopeIndex = 1);
+                  if (_globalArtists.isEmpty) _loadArtists();
+                },
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoadingArtists && artists.isEmpty
+              ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
+              : artists.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.person_outline_rounded, size: 54, color: AppTheme.textMuted),
+                          const SizedBox(height: 12),
+                          const Text('Артистов пока нет', style: TextStyle(color: AppTheme.textMuted)),
+                          const SizedBox(height: 12),
+                          FilledButton.tonal(
+                            onPressed: _loadArtists,
+                            child: const Text('Загрузить артистов'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      itemCount: artists.length,
+                      itemBuilder: (context, idx) {
+                        final art = artists[idx];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            leading: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: const BoxDecoration(shape: BoxShape.circle),
+                              child: ClipOval(
+                                child: art.imageUrl != null
+                                    ? CachedNetworkImage(
+                                        imageUrl: art.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        placeholder: (_, __) => Container(color: AppTheme.bg3),
+                                        errorWidget: (_, __, ___) => Container(
+                                          color: AppTheme.bg3,
+                                          child: const Icon(Icons.person_rounded, color: AppTheme.textMuted),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: AppTheme.bg3,
+                                        child: const Icon(Icons.person_rounded, color: AppTheme.textMuted),
+                                      ),
+                              ),
+                            ),
+                            title: Text(
+                              art.name,
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              [
+                                if (art.trackCount > 0) '${art.trackCount} треков',
+                                if (art.albumCount > 0) '${art.albumCount} альбомов',
+                              ].join(' • '),
+                              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ArtistDetailScreen(
+                                    artistName: art.name,
+                                    initialArtist: art,
+                                    audioHandler: widget.audioHandler,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
         ),
       ],
     );
@@ -1696,190 +2408,534 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ================= 5. ПОДПИСКИ & ПОЛЬЗОВАТЕЛИ КАК НА САЙТЕ =================
-  Widget _buildSubscriptionsTab() {
+  // ================= 5. РАЗДЕЛ «КЕНТЫ» (СОЦИАЛКА, ЛЕНТА, ПОДПИСКИ) =================
+  Widget _buildKentyTab() {
     return Column(
       children: [
-        // Переключатель: Пользователи сайта / Telegram-каналы
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        // Шапка профиля пользователя и счетчики социалки
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.bg2,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppTheme.bg4),
+          ),
           child: Row(
             children: [
-              _buildCategoryChip(
-                label: 'Пользователи (${_globalUsers.length})',
-                isSelected: _subscriptionsFilterIndex == 0,
-                onSelected: () => setState(() => _subscriptionsFilterIndex = 0),
+              _buildUserAvatar(
+                avatarUrl: widget.user.photoUrl,
+                displayName: widget.user.displayName,
+                radius: 26,
+                fontSize: 18,
+                backgroundColor: AppTheme.accent,
+                textColor: AppTheme.accentText,
               ),
-              const SizedBox(width: 8),
-              _buildCategoryChip(
-                label: 'Telegram-каналы',
-                isSelected: _subscriptionsFilterIndex == 1,
-                onSelected: () => setState(() => _subscriptionsFilterIndex = 1),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.user.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textPrimary),
+                    ),
+                    if (widget.user.username != null)
+                      Text(
+                        '@${widget.user.username}',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.accentLight),
+                      ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          '${_followingList.length} подписок',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w500),
+                        ),
+                        const Text(' • ', style: TextStyle(color: AppTheme.textMuted)),
+                        Text(
+                          '${_followersList.length} подписчиков',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: _isSocialLoading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent))
+                    : const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary),
+                tooltip: 'Обновить ленту и кентов',
+                onPressed: _loadSocialData,
               ),
             ],
           ),
         ),
 
+        // Подкатегории Кентов: Лента, Подписки, Подписчики, Поиск, TG-Каналы
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildCategoryChip(
+                  label: 'Лента (${_feedDrops.length})',
+                  isSelected: _kentySubTab == 0,
+                  onSelected: () => setState(() => _kentySubTab = 0),
+                ),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                  label: 'Подписки (${_followingList.length})',
+                  isSelected: _kentySubTab == 1,
+                  onSelected: () => setState(() => _kentySubTab = 1),
+                ),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                  label: 'Подписчики (${_followersList.length})',
+                  isSelected: _kentySubTab == 2,
+                  onSelected: () => setState(() => _kentySubTab = 2),
+                ),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                  label: 'Поиск кентов',
+                  isSelected: _kentySubTab == 3,
+                  onSelected: () => setState(() => _kentySubTab = 3),
+                ),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                  label: 'TG-Каналы',
+                  isSelected: _kentySubTab == 4,
+                  onSelected: () => setState(() => _kentySubTab = 4),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         Expanded(
-          child: _subscriptionsFilterIndex == 0
-              ? _buildUsersListView()
-              : _buildTelegramChannelsView(),
+          child: _kentySubTab == 0
+              ? _buildFeedView()
+              : _kentySubTab == 1
+                  ? _buildFollowingView()
+                  : _kentySubTab == 2
+                      ? _buildFollowersView()
+                      : _kentySubTab == 3
+                          ? _buildSearchKentyView()
+                          : _buildTelegramChannelsView(),
         ),
       ],
     );
   }
 
-  // Список пользователей AuxBass с сайта
-  Widget _buildUsersListView() {
-    if (_globalUsers.isEmpty) {
-      return const Center(child: Text('Список пользователей пуст', style: TextStyle(color: AppTheme.textMuted)));
+  /// 1. Лента активности от кентов
+  Widget _buildFeedView() {
+    if (_isSocialLoading && _feedDrops.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.accent));
+    }
+
+    if (_feedDrops.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.dynamic_feed_rounded, size: 56, color: AppTheme.textMuted),
+              const SizedBox(height: 14),
+              const Text(
+                'Лента пока пуста',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Здесь будут появляться обновления треков от пользователей, на которых вы подписаны.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.tonal(
+                onPressed: () => setState(() => _kentySubTab = 3),
+                child: const Text('Найти кентов'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _globalUsers.length,
-      itemBuilder: (context, i) {
-        final u = _globalUsers[i];
-        final isMe = u.id == widget.user.id;
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            leading: _buildUserAvatar(
-              avatarUrl: u.fullAvatarUrl,
-              displayName: u.displayName,
-              radius: 24,
-              fontSize: 18,
-              backgroundColor: isMe ? AppTheme.accent : AppTheme.bg3,
-              textColor: isMe ? AppTheme.accentText : AppTheme.accentLight,
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    u.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                  ),
+      itemCount: _feedDrops.length,
+      itemBuilder: (context, idx) {
+        final drop = _feedDrops[idx];
+        final uploader = drop.uploader;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.bg2,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppTheme.bg4),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Шапка дропа: Автор, действие, кнопка перехода в профиль
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (uploader != null) _openUserProfile(uploader.id, initialUser: uploader);
+                      },
+                      child: _buildUserAvatar(
+                        avatarUrl: uploader?.photoUrl,
+                        displayName: uploader?.displayName ?? 'Кент',
+                        radius: 20,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (uploader != null) _openUserProfile(uploader.id, initialUser: uploader);
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              uploader?.displayName ?? 'Пользователь',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textPrimary),
+                            ),
+                            Text(
+                              drop.action,
+                              style: const TextStyle(fontSize: 12, color: AppTheme.accentLight),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (drop.tracks.isNotEmpty)
+                      IconButton.filledTonal(
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppTheme.accent.withAlpha(35),
+                          padding: const EdgeInsets.all(8),
+                        ),
+                        icon: const Icon(Icons.play_arrow_rounded, color: AppTheme.accentLight, size: 20),
+                        tooltip: 'Слушать все треки из дропа',
+                        onPressed: () => widget.audioHandler.playTrackList(drop.tracks, 0),
+                      ),
+                  ],
                 ),
-                if (isMe)
-                  Container(
-                    margin: const EdgeInsets.only(left: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(10)),
-                    child: const Text('ВЫ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accentText)),
-                  ),
-              ],
-            ),
-            subtitle: Text(
-              u.username != null ? '@${u.username}' : 'ID #${u.id}',
-              style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-            ),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.bg3,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.bg4),
               ),
-              child: Text(
-                '${u.uploadCount} треков',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.accentLight),
-              ),
-            ),
-            onTap: () => _openUserTracks(u),
+
+              // Список треков дропа
+              ...drop.tracks.map((track) {
+                return ValueListenableBuilder<Track?>(
+                  valueListenable: widget.audioHandler.currentTrackNotifier,
+                  builder: (context, current, _) {
+                    return TrackTile(
+                      track: track,
+                      isPlaying: current?.id == track.id,
+                      onTap: () => widget.audioHandler.playTrackList(drop.tracks, drop.tracks.indexOf(track)),
+                    );
+                  },
+                );
+              }),
+            ],
           ),
         );
       },
     );
   }
 
-  void _openUserTracks(GlobalUser targetUser) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.bg1,
-      isScrollControlled: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.75,
-          maxChildSize: 0.95,
-          minChildSize: 0.5,
-          builder: (ctx, scrollController) {
-            return FutureBuilder<List<Track>>(
-              future: _apiService.getUserTracks(targetUser.id),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accent)));
-                }
-                final tracks = snapshot.data ?? [];
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                      child: Row(
-                        children: [
-                          _buildUserAvatar(
-                            avatarUrl: targetUser.fullAvatarUrl,
-                            displayName: targetUser.displayName,
-                            radius: 24,
-                            fontSize: 18,
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(targetUser.displayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                                Text('${tracks.length} треков', style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                              ],
-                            ),
-                          ),
-                          if (tracks.isNotEmpty)
-                            FilledButton.icon(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                widget.audioHandler.playTrackList(tracks, 0);
-                              },
-                              icon: const Icon(Icons.play_arrow_rounded),
-                              label: const Text('Слушать'),
-                              style: FilledButton.styleFrom(backgroundColor: AppTheme.accent, foregroundColor: AppTheme.accentText),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const Divider(color: AppTheme.bg4),
-                    Expanded(
-                      child: tracks.isEmpty
-                          ? const Center(child: Text('У пользователя пока нет доступных треков', style: TextStyle(color: AppTheme.textMuted)))
-                          : ListView.builder(
-                              itemExtent: 66.0,
-                              controller: scrollController,
-                              itemCount: tracks.length,
-                              itemBuilder: (context, i) {
-                                final track = tracks[i];
-                                return TrackTile(
-                                  track: track,
-                                  isPlaying: widget.audioHandler.currentTrack?.id == track.id,
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    widget.audioHandler.playTrackList(tracks, i);
-                                  },
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
+  /// 2. Список подписок
+  Widget _buildFollowingView() {
+    if (_followingList.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.person_add_disabled_rounded, size: 54, color: AppTheme.textMuted),
+            const SizedBox(height: 12),
+            const Text('Вы пока ни на кого не подписаны', style: TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: 14),
+            FilledButton.tonal(
+              onPressed: () => setState(() => _kentySubTab = 3),
+              child: const Text('Найти кентов'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: _followingList.length,
+      itemBuilder: (context, idx) {
+        final u = _followingList[idx];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            leading: _buildUserAvatar(
+              avatarUrl: u.photoUrl,
+              displayName: u.displayName,
+              radius: 22,
+              fontSize: 16,
+            ),
+            title: Text(u.displayName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+            subtitle: Text(
+              u.username != null ? '@${u.username}' : '${u.trackCount} треков',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  onPressed: () async {
+                    await _apiService.unfollowUser(u.id);
+                    setState(() {
+                      _followingList.removeAt(idx);
+                    });
+                  },
+                  child: const Text('Отписаться', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                  onPressed: () => _openUserProfile(u.id, initialUser: u),
+                ),
+              ],
+            ),
+            onTap: () => _openUserProfile(u.id, initialUser: u),
+          ),
         );
       },
+    );
+  }
+
+  /// 3. Список подписчиков
+  Widget _buildFollowersView() {
+    if (_followersList.isEmpty) {
+      return const Center(
+        child: Text('У вас пока нет подписчиков', style: TextStyle(color: AppTheme.textMuted)),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: _followersList.length,
+      itemBuilder: (context, idx) {
+        final u = _followersList[idx];
+        final isFollowingBack = _followingList.any((f) => f.id == u.id) || u.isFollowing;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            leading: _buildUserAvatar(
+              avatarUrl: u.photoUrl,
+              displayName: u.displayName,
+              radius: 22,
+              fontSize: 16,
+            ),
+            title: Text(u.displayName, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+            subtitle: Text(
+              u.username != null ? '@${u.username}' : '${u.trackCount} треков',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isFollowingBack)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bg3,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text('Взаимно', style: TextStyle(fontSize: 11, color: AppTheme.accentLight, fontWeight: FontWeight.bold)),
+                  )
+                else
+                  FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    onPressed: () async {
+                      final ok = await _apiService.followUser(u.id);
+                      if (ok) {
+                        setState(() {
+                          u.isFollowing = true;
+                          _followingList.add(u);
+                        });
+                      }
+                    },
+                    child: const Text('В ответ', style: TextStyle(fontSize: 11)),
+                  ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                  onPressed: () => _openUserProfile(u.id, initialUser: u),
+                ),
+              ],
+            ),
+            onTap: () => _openUserProfile(u.id, initialUser: u),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 4. Поиск кентов
+  Widget _buildSearchKentyView() {
+    final results = _kentySearchQuery.isNotEmpty ? _socialSearchResults : _globalUsers.map((g) => SocialUser(
+      id: g.id,
+      username: g.username,
+      customNickname: g.displayName,
+      photoUrl: g.fullAvatarUrl,
+      trackCount: g.uploadCount,
+      isFollowing: _followingList.any((f) => f.id == g.id),
+    )).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: TextField(
+            controller: _kentySearchController,
+            onChanged: (val) {
+              setState(() => _kentySearchQuery = val);
+              _searchKenty(val);
+            },
+            style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Поиск по никнейму или @username...',
+              hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+              prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.accentLight, size: 20),
+              suffixIcon: _kentySearchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 18, color: AppTheme.textMuted),
+                      onPressed: () {
+                        _kentySearchController.clear();
+                        setState(() {
+                          _kentySearchQuery = '';
+                          _socialSearchResults = [];
+                        });
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: AppTheme.bg2,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            ),
+          ),
+        ),
+
+        Expanded(
+          child: results.isEmpty
+              ? Center(
+                  child: Text(
+                    _kentySearchQuery.isNotEmpty ? 'Пользователь не найден' : 'Список пользователей пуст',
+                    style: const TextStyle(color: AppTheme.textMuted),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  itemCount: results.length,
+                  itemBuilder: (context, idx) {
+                    final u = results[idx];
+                    final isMe = u.id == widget.user.id;
+                    final isFollowing = _followingList.any((f) => f.id == u.id) || u.isFollowing;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        leading: _buildUserAvatar(
+                          avatarUrl: u.photoUrl,
+                          displayName: u.displayName,
+                          radius: 22,
+                          fontSize: 16,
+                          backgroundColor: isMe ? AppTheme.accent : AppTheme.bg3,
+                          textColor: isMe ? AppTheme.accentText : AppTheme.accentLight,
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                u.displayName,
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (isMe)
+                              Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(10)),
+                                child: const Text('ВЫ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accentText)),
+                              ),
+                          ],
+                        ),
+                        subtitle: Text(
+                          u.username != null ? '@${u.username}' : '${u.trackCount} треков',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                        trailing: isMe
+                            ? null
+                            : FilledButton.tonal(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: isFollowing ? AppTheme.bg3 : AppTheme.accent.withAlpha(50),
+                                  foregroundColor: isFollowing ? AppTheme.textSecondary : AppTheme.accentLight,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                ),
+                                onPressed: () async {
+                                  if (isFollowing) {
+                                    await _apiService.unfollowUser(u.id);
+                                    setState(() {
+                                      _followingList.removeWhere((f) => f.id == u.id);
+                                      u.isFollowing = false;
+                                    });
+                                  } else {
+                                    await _apiService.followUser(u.id);
+                                    setState(() {
+                                      u.isFollowing = true;
+                                      _followingList.add(u);
+                                    });
+                                  }
+                                },
+                                child: Text(isFollowing ? 'Подписан' : 'Подписаться', style: const TextStyle(fontSize: 12)),
+                              ),
+                        onTap: () => _openUserProfile(u.id, initialUser: u),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  void _openUserProfile(int userId, {SocialUser? initialUser}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(
+          userId: userId,
+          initialUser: initialUser,
+          audioHandler: widget.audioHandler,
+        ),
+      ),
     );
   }
 

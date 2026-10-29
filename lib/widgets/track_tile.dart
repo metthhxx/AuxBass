@@ -1,19 +1,23 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/track.dart';
+import '../screens/artist_detail_screen.dart';
 import '../services/api_service.dart';
+import '../services/audio_player_handler.dart';
 import '../theme/app_theme.dart';
 
 class TrackTile extends StatefulWidget {
   final Track track;
   final bool isPlaying;
   final VoidCallback onTap;
+  final AudioPlayerHandler? audioHandler;
 
   const TrackTile({
     super.key,
     required this.track,
     required this.isPlaying,
     required this.onTap,
+    this.audioHandler,
   });
 
   @override
@@ -102,13 +106,29 @@ class _TrackTileState extends State<TrackTile> {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    track.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.textSecondary,
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.audioHandler != null
+                        ? () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ArtistDetailScreen(
+                                  artistName: track.artist,
+                                  audioHandler: widget.audioHandler!,
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
+                    child: Text(
+                      track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: widget.audioHandler != null ? AppTheme.accentLight.withAlpha(220) : AppTheme.textSecondary,
+                      ),
                     ),
                   ),
                 ],

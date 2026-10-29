@@ -1,7 +1,12 @@
 import 'package:dio/dio.dart';
+import '../models/album.dart';
+import '../models/artist.dart';
+import '../models/feed_drop.dart';
 import '../models/global_user.dart';
+import '../models/music_tag.dart';
 import '../models/paged_tracks.dart';
 import '../models/playlist.dart';
+import '../models/social_user.dart';
 import '../models/track.dart';
 import 'auth_service.dart';
 
@@ -368,4 +373,333 @@ class ApiService {
     }
     return [];
   }
+
+  // ==========================================
+  // 1. СОЦИАЛЬНЫЙ ФУНКЦИОНАЛ («КЕНТЫ»)
+  // ==========================================
+
+  /// Получение ленты активности (updates от кентов)
+  Future<List<FeedDrop>> getSocialFeed({String scope = 'following', int page = 1, int perPage = 30}) async {
+    try {
+      final response = await _dio.get(
+        '/social/feed',
+        queryParameters: {'scope': scope, 'page': page, 'per_page': perPage},
+      );
+      final data = response.data;
+      final items = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      return items.map((i) => FeedDrop.fromJson(i as Map<String, dynamic>)).toList();
+    } catch (e) {
+      // Если подписок еще нет и following пуст, пробуем загрузить глобальную ленту
+      if (scope == 'following') {
+        try {
+          return await getSocialFeed(scope: 'global', page: page, perPage: perPage);
+        } catch (_) {}
+      }
+      return [];
+    }
+  }
+
+  /// Список пользователей, на которых подписан текущий аккаунт
+  Future<List<SocialUser>> getFollowing() async {
+    try {
+      final response = await _dio.get('/social/following');
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      return list.map((u) => SocialUser.fromJson(u as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Список подписчиков текущего аккаунта
+  Future<List<SocialUser>> getFollowers() async {
+    try {
+      final response = await _dio.get('/social/followers');
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      return list.map((u) => SocialUser.fromJson(u as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Поиск кентов/пользователей по нику или имени
+  Future<List<SocialUser>> searchSocialUsers(String query, {int page = 1, int perPage = 30}) async {
+    try {
+      final response = await _dio.get(
+        '/social/search',
+        queryParameters: {'q': query.trim(), 'page': page, 'per_page': perPage},
+      );
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      return list.map((u) => SocialUser.fromJson(u as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Подписаться на пользователя
+  Future<bool> followUser(int userId) async {
+    try {
+      await _dio.post('/social/follow', data: {'user_id': userId});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Отписаться от пользователя
+  Future<bool> unfollowUser(int userId) async {
+    try {
+      await _dio.post('/social/unfollow', data: {'user_id': userId});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Получить подробный профиль пользователя
+  Future<SocialUser> getUserProfile(int userId) async {
+    try {
+      final response = await _dio.get('/social/user/$userId');
+      final data = response.data is Map ? response.data as Map<String, dynamic> : <String, dynamic>{};
+      return SocialUser.fromJson(data);
+    } catch (e) {
+      throw Exception('Не удалось загрузить профиль пользователя: $e');
+    }
+  }
+
+  /// Медиатека треков конкретного пользователя
+  Future<List<Track>> getUserLibrary(int userId, {int page = 1, int perPage = 100}) async {
+    try {
+      final response = await _dio.get(
+        '/social/user/$userId/library',
+        queryParameters: {'page': page, 'per_page': perPage},
+      );
+      return _parseTracks(response.data);
+    } catch (_) {
+      return getUserTracks(userId, limit: perPage);
+    }
+  }
+
+  /// Альбомы конкретного пользователя
+  Future<List<Album>> getUserAlbums(int userId) async {
+    try {
+      final response = await _dio.get('/social/user/$userId/albums');
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      return list.map((a) => Album.fromJson(a as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Плейлисты конкретного пользователя
+  Future<List<Playlist>> getUserPlaylists(int userId) async {
+    try {
+      final response = await _dio.get('/playlists/user/$userId');
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      return list.map((p) => Playlist.fromJson(p as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ==========================================
+  // 2. АЛЬБОМЫ И АРТИСТЫ (КАТАЛОГ)
+  // ==========================================
+
+  /// Список альбомов (scope: 'library' или 'global')
+  Future<List<Album>> getAlbums({String scope = 'library'}) async {
+    try {
+      final response = await _dio.get('/albums', queryParameters: {'scope': scope});
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      if (list.isEmpty && scope == 'library') {
+        // Fallback к глобальным альбомам
+        return await getAlbums(scope: 'global');
+      }
+      return list.map((a) => Album.fromJson(a as Map<String, dynamic>)).toList();
+    } catch (e) {
+      if (scope == 'library') {
+        try {
+          return await getAlbums(scope: 'global');
+        } catch (_) {}
+      }
+      return [];
+    }
+  }
+
+  /// Детали альбома со списком всех треков
+  Future<Album> getAlbumDetails(dynamic albumId, {String scope = 'library'}) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.get('/albums/$albumId', queryParameters: {'scope': scope});
+      } on DioException catch (de) {
+        if (de.response?.statusCode == 404 && scope == 'library') {
+          response = await _dio.get('/albums/$albumId', queryParameters: {'scope': 'global'});
+        } else {
+          rethrow;
+        }
+      }
+      final data = response.data is Map ? response.data as Map<String, dynamic> : <String, dynamic>{};
+      return Album.fromJson(data);
+    } catch (e) {
+      throw Exception('Не удалось загрузить альбом: $e');
+    }
+  }
+
+  /// Список артистов (scope: 'library' или 'global')
+  Future<List<Artist>> getArtists({String scope = 'library'}) async {
+    try {
+      final response = await _dio.get('/artists', queryParameters: {'scope': scope, 'limit': 150});
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      if (list.isEmpty && scope == 'library') {
+        return await getArtists(scope: 'global');
+      }
+      return list.map((a) => Artist.fromJson(a as Map<String, dynamic>)).toList();
+    } catch (_) {
+      if (scope == 'library') {
+        try {
+          return await getArtists(scope: 'global');
+        } catch (_) {}
+      }
+      return [];
+    }
+  }
+
+  /// Информация об исполнителе (инфо, дискография/альбомы)
+  Future<Artist> getArtistInfo(String artistName, {String scope = 'library'}) async {
+    try {
+      Response response;
+      final encoded = Uri.encodeComponent(artistName);
+      try {
+        response = await _dio.get('/artists/$encoded/info', queryParameters: {'scope': scope});
+      } on DioException catch (de) {
+        if (de.response?.statusCode == 404 && scope == 'library') {
+          response = await _dio.get('/artists/$encoded/info', queryParameters: {'scope': 'global'});
+        } else {
+          rethrow;
+        }
+      }
+      final data = response.data is Map ? response.data as Map<String, dynamic> : <String, dynamic>{};
+      return Artist.fromJson(data);
+    } catch (_) {
+      return Artist(name: artistName);
+    }
+  }
+
+  /// Треки конкретного артиста
+  Future<List<Track>> getArtistTracks(String artistName, {String scope = 'library', int limit = 100}) async {
+    try {
+      final encoded = Uri.encodeComponent(artistName);
+      final response = await _dio.get(
+        '/artists/$encoded/tracks',
+        queryParameters: {'scope': scope, 'limit': limit},
+      );
+      return _parseTracks(response.data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Добавить трек в свою медиатеку
+  Future<bool> addTrackToLibrary(int trackId) async {
+    try {
+      await _dio.post('/tracks/$trackId/add-to-library');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ==========================================
+  // 7. ЖАНРЫ, ТЕГИ И РЕКОМЕНДАЦИИ
+  // ==========================================
+
+  /// Получить популярные теги
+  Future<List<MusicTag>> getTags({String scope = 'global', int limit = 40}) async {
+    try {
+      final response = await _dio.get('/tracks/tags', queryParameters: {'scope': scope, 'limit': limit});
+      final data = response.data;
+      final list = (data is Map && data['items'] is List)
+          ? data['items'] as List
+          : (data is List ? data : []);
+      if (list.isEmpty && scope == 'library') {
+        return await getTags(scope: 'global', limit: limit);
+      }
+      final tags = list.map((t) => MusicTag.fromJson(t)).toList();
+      return tags.isNotEmpty ? tags : _defaultTags;
+    } catch (_) {
+      return _defaultTags;
+    }
+  }
+
+  /// Получить список жанров
+  Future<List<String>> getGenres({String scope = 'global'}) async {
+    try {
+      final response = await _dio.get('/tracks/genres', queryParameters: {'scope': scope});
+      final data = response.data;
+      final list = (data is Map && data['genres'] is List)
+          ? data['genres'] as List
+          : (data is List ? data : []);
+      return list.map((e) => e.toString()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Популярные треки на AuxBass (топ)
+  Future<List<Track>> getGlobalPopular({int limit = 20}) async {
+    try {
+      final response = await _dio.get('/tracks/global/popular', queryParameters: {'limit': limit});
+      return _parseTracks(response.data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Новые поступления треков на AuxBass (свежие добавления)
+  Future<List<Track>> getGlobalRecent({int limit = 20}) async {
+    try {
+      final response = await _dio.get('/tracks/global/recent', queryParameters: {'limit': limit});
+      return _parseTracks(response.data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static final List<MusicTag> _defaultTags = [
+    MusicTag(name: 'phonk'),
+    MusicTag(name: 'lo-fi'),
+    MusicTag(name: 'dnb'),
+    MusicTag(name: 'rock'),
+    MusicTag(name: 'hiphop'),
+    MusicTag(name: 'ambient'),
+    MusicTag(name: 'synthwave'),
+    MusicTag(name: 'chill'),
+    MusicTag(name: 'nightdrive'),
+    MusicTag(name: 'electronic'),
+    MusicTag(name: 'indie'),
+    MusicTag(name: 'workout'),
+  ];
 }

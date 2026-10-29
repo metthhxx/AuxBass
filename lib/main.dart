@@ -13,6 +13,11 @@ late final AudioPlayerHandler audioHandler;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Принудительная блокировка портретной ориентации (без автоповорота)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
   // Принудительное включение максимальной герцовки дисплея (144Hz / 120Hz)
   try {
     const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('setHighRefreshRate');

@@ -5,22 +5,26 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import 'api_service.dart';
+import 'audio_cache_service.dart';
 
 /// Глобальный обработчик воспроизведения аудио с поддержкой системных уведомлений
 class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer();
   final ApiService _apiService = ApiService();
+  final AudioCacheService _cacheService = AudioCacheService();
 
   List<Track> _queue = [];
   int _currentIndex = -1;
   bool _isShuffle = false;
   LoopMode _loopMode = LoopMode.off;
   int _sessionCounter = 0;
+  int _lastPreloadedTrackId = -1;
 
   final ValueNotifier<Track?> currentTrackNotifier = ValueNotifier<Track?>(null);
   final ValueNotifier<List<Track>> queueNotifier = ValueNotifier<List<Track>>([]);
 
   AudioPlayer get player => _player;
+  AudioCacheService get cacheService => _cacheService;
   Track? get currentTrack => _currentIndex >= 0 && _currentIndex < _queue.length ? _queue[_currentIndex] : null;
   List<Track> get queueList => _queue;
   int get currentIndex => _currentIndex;
@@ -28,6 +32,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   LoopMode get loopMode => _loopMode;
 
   AudioPlayerHandler() {
+    _cacheService.init();
     _initAudioSession();
     _listenToPlayerEvents();
   }
@@ -54,7 +59,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
             _player.setVolume(1.0);
             break;
           case AudioInterruptionType.pause:
-            play();
+            // Не возобновляем воспроизведение автоматически при выходе из других приложений (TikTok и др.)
             break;
           case AudioInterruptionType.unknown:
             break;
@@ -66,6 +71,18 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   void _listenToPlayerEvents() {
     // Синхронизация состояния плеера с системным AudioService (шторка уведомлений Android)
     _player.playbackEventStream.listen((_) => _broadcastState());
+
+    // Упреждающая предзагрузка следующего трека по мере воспроизведения текущего (бесшовный переход)
+    _player.positionStream.listen((position) {
+      final duration = _player.duration;
+      if (duration != null && duration > Duration.zero) {
+        final remaining = (duration - position).inSeconds;
+        // За 25 секунд до конца или после 70% трека упреждающе кэшируем следующий
+        if (remaining <= 25 || (position.inMilliseconds / duration.inMilliseconds) >= 0.70) {
+          _preloadNextTrack();
+        }
+      }
+    });
 
     // Отслеживание изменений состояния и автоматический переход к следующему треку только при реальном окончании
     _player.playerStateStream.listen((state) {
@@ -186,14 +203,22 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       final session = await AudioSession.instance;
       await session.setActive(true);
 
-      // Запрашиваем актуальную ссылку на аудиопоток
-      final streamUrl = await _apiService.getStreamUrl(track.id);
+      // 1. Проверяем локальный кэш треков для мгновенного старта без интернета/задержек
+      final cachedFile = _cacheService.getCachedFile(track.id);
+      if (cachedFile != null) {
+        debugPrint('[AudioPlayerHandler] ⚡ Мгновенный запуск трека ${track.id} из дискового кэша: ${cachedFile.path}');
+        if (sessionId != _sessionCounter) return;
+        await _player.setFilePath(cachedFile.path);
+      } else {
+        // 2. Если трек не закэширован — получаем URL и начинаем потоковое воспроизведение
+        final streamUrl = await _apiService.getStreamUrl(track.id);
+        if (sessionId != _sessionCounter) return;
 
-      // Если за время сетевого запроса пользователь уже переключил трек — прерываем
-      if (sessionId != _sessionCounter) return;
+        await _player.setUrl(streamUrl);
 
-      // Прямая загрузка аудиопотока через нативный ExoPlayer (без прокси)
-      await _player.setUrl(streamUrl);
+        // В фоне кэшируем трек на диск для будущих мгновенных запусков
+        _cacheService.cacheTrackInBackground(track.id, streamUrl);
+      }
 
       if (sessionId != _sessionCounter) return;
 
@@ -201,11 +226,36 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
       // Фиксируем воспроизведение (скробблинг)
       _apiService.recordPlay(track.id);
+
+      // Запускаем упреждающую предзагрузку следующего трека для бесшовного перехода
+      _preloadNextTrack();
     } catch (e) {
       debugPrint('[AudioPlayerHandler] Ошибка воспроизведения трека: $e');
       // Не вызываем автоматический skipToNext в цикле, чтобы плеер не скакал по трекам
       _broadcastState();
     }
+  }
+
+  /// Определение следующего трека в очереди с учетом Shuffle и LoopMode
+  Track? _getNextTrack() {
+    if (_queue.isEmpty) return null;
+    if (_loopMode == LoopMode.one) return currentTrack;
+    if (_currentIndex >= 0 && _currentIndex + 1 < _queue.length) {
+      return _queue[_currentIndex + 1];
+    } else if (_loopMode == LoopMode.all && _queue.isNotEmpty) {
+      return _queue.first;
+    }
+    return null;
+  }
+
+  /// Упреждающая фоновая предзагрузка следующего трека
+  void _preloadNextTrack() {
+    final nextTrack = _getNextTrack();
+    if (nextTrack == null || nextTrack.id == _lastPreloadedTrackId) return;
+    if (_cacheService.isCached(nextTrack.id)) return;
+
+    _lastPreloadedTrackId = nextTrack.id;
+    _cacheService.preloadTrack(nextTrack.id, () => _apiService.getStreamUrl(nextTrack.id));
   }
 
   @override
