@@ -21,6 +21,19 @@ class Album {
     this.tracks = const [],
   });
 
+  String? get fullCoverUrl {
+    if (coverUrl == null || coverUrl!.trim().isEmpty || coverUrl == 'null') return null;
+    final s = coverUrl!.trim();
+    if (s.startsWith('http://') || s.startsWith('https://')) {
+      if (s.startsWith('https://aux.ganj4craft.ru') || s.startsWith('http://aux.ganj4craft.ru')) {
+        return s;
+      }
+      return 'https://aux.ganj4craft.ru/api/images/proxy?url=${Uri.encodeComponent(s)}';
+    }
+    if (s.startsWith('/')) return 'https://aux.ganj4craft.ru$s';
+    return 'https://aux.ganj4craft.ru/$s';
+  }
+
   factory Album.fromJson(Map<String, dynamic> json) {
     final rawTracks = json['tracks'] ?? json['full_tracklist'];
     final tracksList = <Track>[];

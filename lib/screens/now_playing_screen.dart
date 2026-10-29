@@ -5,6 +5,7 @@ import '../models/track.dart';
 import '../services/api_service.dart';
 import '../services/audio_player_handler.dart';
 import '../theme/app_theme.dart';
+import '../widgets/track_action_sheet.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   final AudioPlayerHandler audioHandler;
@@ -48,6 +49,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             ),
           ],
         ),
+        actions: [
+          ValueListenableBuilder<Track?>(
+            valueListenable: widget.audioHandler.currentTrackNotifier,
+            builder: (context, currentTrack, _) {
+              if (currentTrack == null) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.more_vert_rounded, size: 26, color: AppTheme.textPrimary),
+                onPressed: () {
+                  TrackActionSheet.show(
+                    context,
+                    track: currentTrack,
+                    audioHandler: widget.audioHandler,
+                    onLikeChanged: () => setState(() {}),
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,

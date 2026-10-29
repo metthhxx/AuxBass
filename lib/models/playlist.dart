@@ -14,11 +14,16 @@ class Playlist {
   });
 
   String? get fullCoverUrl {
-    if (coverUrl == null || coverUrl!.isEmpty) return null;
-    if (coverUrl!.startsWith('http://') || coverUrl!.startsWith('https://')) {
-      return coverUrl;
+    if (coverUrl == null || coverUrl!.trim().isEmpty || coverUrl == 'null') return null;
+    final s = coverUrl!.trim();
+    if (s.startsWith('http://') || s.startsWith('https://')) {
+      if (s.startsWith('https://aux.ganj4craft.ru') || s.startsWith('http://aux.ganj4craft.ru')) {
+        return s;
+      }
+      return 'https://aux.ganj4craft.ru/api/images/proxy?url=${Uri.encodeComponent(s)}';
     }
-    return 'https://aux.ganj4craft.ru$coverUrl';
+    if (s.startsWith('/')) return 'https://aux.ganj4craft.ru$s';
+    return 'https://aux.ganj4craft.ru/$s';
   }
 
   factory Playlist.fromJson(Map<String, dynamic> json) {

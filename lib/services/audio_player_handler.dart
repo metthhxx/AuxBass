@@ -165,6 +165,30 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     await _loadAndPlayCurrentTrack();
   }
 
+  /// Поставить трек играть следующим
+  void playNext(Track track) {
+    if (_queue.isEmpty || _currentIndex < 0) {
+      _queue = [track];
+      _currentIndex = 0;
+      _loadAndPlayCurrentTrack();
+    } else {
+      _queue.insert(_currentIndex + 1, track);
+    }
+    queueNotifier.value = List.unmodifiable(_queue);
+  }
+
+  /// Добавить трек в конец очереди
+  void addToQueue(Track track) {
+    if (_queue.isEmpty) {
+      _queue = [track];
+      _currentIndex = 0;
+      _loadAndPlayCurrentTrack();
+    } else {
+      _queue.add(track);
+    }
+    queueNotifier.value = List.unmodifiable(_queue);
+  }
+
   /// Воспроизведение одиночного трека
   Future<void> playSingleTrack(Track track) async {
     final existingIndex = _queue.indexWhere((t) => t.id == track.id);

@@ -369,6 +369,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                       return TrackTile(
                         track: track,
                         isPlaying: isPlaying,
+                        audioHandler: widget.audioHandler,
                         onTap: () {
                           widget.audioHandler.playTrackList(_tracks, index);
                         },

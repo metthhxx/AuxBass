@@ -5,12 +5,15 @@ import '../screens/artist_detail_screen.dart';
 import '../services/api_service.dart';
 import '../services/audio_player_handler.dart';
 import '../theme/app_theme.dart';
+import 'track_action_sheet.dart';
 
 class TrackTile extends StatefulWidget {
   final Track track;
   final bool isPlaying;
   final VoidCallback onTap;
   final AudioPlayerHandler? audioHandler;
+  final int? playlistId;
+  final VoidCallback? onRemoveFromPlaylist;
 
   const TrackTile({
     super.key,
@@ -18,6 +21,8 @@ class TrackTile extends StatefulWidget {
     required this.isPlaying,
     required this.onTap,
     this.audioHandler,
+    this.playlistId,
+    this.onRemoveFromPlaylist,
   });
 
   @override
@@ -46,6 +51,18 @@ class _TrackTileState extends State<TrackTile> {
     }
   }
 
+  void _openActionMenu() {
+    if (widget.audioHandler == null) return;
+    TrackActionSheet.show(
+      context,
+      track: widget.track,
+      audioHandler: widget.audioHandler!,
+      onLikeChanged: () => setState(() {}),
+      playlistId: widget.playlistId,
+      onRemoveFromPlaylist: widget.onRemoveFromPlaylist,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final track = widget.track;
@@ -53,6 +70,7 @@ class _TrackTileState extends State<TrackTile> {
 
     return InkWell(
       onTap: widget.onTap,
+      onLongPress: widget.audioHandler != null ? _openActionMenu : null,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -138,7 +156,7 @@ class _TrackTileState extends State<TrackTile> {
             // Иконка играющего трека или длительность
             if (isCurrent) ...[
               const Icon(Icons.graphic_eq_rounded, color: AppTheme.accent, size: 22),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
             ],
 
             // Лайк
@@ -157,15 +175,13 @@ class _TrackTileState extends State<TrackTile> {
               onPressed: _isLikeLoading ? null : _toggleLike,
             ),
 
-            // Длительность
-            Text(
-              track.formattedDuration,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppTheme.textMuted,
-                fontWeight: FontWeight.w500,
+            // Меню трека (3 точки)
+            if (widget.audioHandler != null)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.more_vert_rounded, color: AppTheme.textMuted, size: 20),
+                onPressed: _openActionMenu,
               ),
-            ),
           ],
         ),
       ),

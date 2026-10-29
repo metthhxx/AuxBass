@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/track_tile.dart';
 import 'album_detail_screen.dart';
+import 'playlist_detail_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
@@ -334,6 +335,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         return TrackTile(
                           track: track,
                           isPlaying: isPlaying,
+                          audioHandler: widget.audioHandler,
                           onTap: () {
                             widget.audioHandler.playTrackList(_tracks, index);
                           },
@@ -380,11 +382,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                         title: Text(pl.name, style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
                         subtitle: Text('${pl.trackCount} треков', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                        onTap: () async {
-                          final tracks = await _apiService.getPlaylistTracks(pl.id);
-                          if (tracks.isNotEmpty) {
-                            widget.audioHandler.playTrackList(tracks, 0);
-                          }
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PlaylistDetailScreen(
+                                playlist: pl,
+                                audioHandler: widget.audioHandler,
+                              ),
+                            ),
+                          );
                         },
                       ),
                     );

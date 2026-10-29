@@ -24,6 +24,8 @@ import '../widgets/track_tile.dart';
 import 'album_detail_screen.dart';
 import 'artist_detail_screen.dart';
 import 'login_screen.dart';
+import 'playlist_detail_screen.dart';
+import 'settings_screen.dart';
 import 'user_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -537,149 +539,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // Кнопка синхронизации с SoundCloud
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF5500).withAlpha(40),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.cloud_sync_rounded, color: Color(0xFFFF7700), size: 24),
-                ),
-                title: const Text('Синхронизация с SoundCloud', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                subtitle: const Text('Импорт треков и плейлистов из SoundCloud', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showSoundCloudDialog();
-                },
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 16),
 
-              // Шторка плеера и уведомления
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent.withAlpha(35),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.notifications_active_rounded, color: AppTheme.accentLight, size: 22),
-                ),
-                title: const Text('Шторка плеера и уведомления', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                subtitle: const Text('Настройки показа плеера в шторке Android', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('openNotificationSettings');
-                },
-              ),
-              const SizedBox(height: 8),
-
-              // Фоновое воспроизведение (Батарея)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withAlpha(35),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.battery_charging_full_rounded, color: Colors.amber, size: 22),
-                ),
-                title: const Text('Фоновое воспроизведение', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                subtitle: const Text('Отключить ограничения батареи при выключенном экране', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  const MethodChannel('ru.ganj4craft.aux/display').invokeMethod('requestIgnoreBatteryOptimizations');
-                },
-              ),
-              const SizedBox(height: 8),
-
-              // Кэш треков (Память и бесшовный переход)
-              FutureBuilder<String>(
-                future: widget.audioHandler.cacheService.getFormattedCacheSize(),
-                builder: (context, snapshot) {
-                  final cacheSize = snapshot.data ?? 'Подсчет...';
-                  return ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.cyan.withAlpha(35),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.storage_rounded, color: Colors.cyanAccent, size: 22),
-                    ),
-                    title: const Text('Кэш музыки и предзагрузка', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                    subtitle: Text('Занято: $cacheSize • Нажмите для очистки', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                    trailing: const Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    onTap: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (dCtx) => AlertDialog(
-                          backgroundColor: AppTheme.bg2,
-                          title: const Text('Очистить кэш треков?', style: TextStyle(color: Colors.white)),
-                          content: const Text(
-                            'Все сохраненные для мгновенного и бесшовного воспроизведения файлы треков будут удалены с диска.',
-                            style: TextStyle(color: AppTheme.textSecondary),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(dCtx, false),
-                              child: const Text('Отмена', style: TextStyle(color: AppTheme.textMuted)),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(dCtx, true),
-                              child: const Text('Очистить', style: TextStyle(color: Colors.redAccent)),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmed == true) {
-                        await widget.audioHandler.cacheService.clearCache();
-                        if (context.mounted) {
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Кэш треков успешно очищен')),
-                          );
-                        }
-                      }
-                    },
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-
-              // Кнопка перехода в бота
-              ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withAlpha(35),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.send_rounded, color: AppTheme.accentLight, size: 22),
-                  ),
-                  title: const Text('Telegram-бот @auxbassbot', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                  subtitle: const Text('Управление чатами и загрузками', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                  trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final uri = Uri.parse('tg://resolve?domain=auxbassbot');
-                    if (!await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication)) {
-                      await launchUrl(Uri.parse('https://t.me/auxbassbot'), mode: LaunchMode.externalApplication);
-                    }
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                // Проверка обновлений (OTA через GitHub Releases)
+                // Мой профиль
                 ListTile(
                   leading: Container(
                     padding: const EdgeInsets.all(8),
@@ -687,15 +549,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: AppTheme.accent.withAlpha(35),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.system_update_rounded, color: AppTheme.accentLight, size: 22),
+                    child: const Icon(Icons.person_rounded, color: AppTheme.accentLight, size: 22),
                   ),
-                  title: const Text('Обновление приложения', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                  subtitle: const Text('Версия 1.0.2 • Проверить обновления', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  title: const Text('Мой профиль', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                  subtitle: const Text('Медиатека, треки и кенты', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _checkForUpdates(manual: true);
+                    _openUserProfile(user.id);
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // Настройки
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withAlpha(35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.settings_rounded, color: AppTheme.accentLight, size: 22),
+                  ),
+                  title: const Text('Настройки', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                  subtitle: const Text('Кэш, SoundCloud, фоновое воспроизведение и обновления', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(
+                          user: widget.user,
+                          audioHandler: widget.audioHandler,
+                          onRefreshRequired: _loadAllData,
+                        ),
+                      ),
+                    );
                   },
                 ),
                 const SizedBox(height: 16),
@@ -727,79 +619,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showSoundCloudDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.bg1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Row(
-          children: [
-            Icon(Icons.cloud_sync_rounded, color: Color(0xFFFF7700), size: 28),
-            SizedBox(width: 12),
-            Text('SoundCloud', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Введите ссылку на ваш профиль SoundCloud или никнейм для синхронизации музыки:',
-              style: TextStyle(fontSize: 13.5, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'https://soundcloud.com/username',
-                hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
-                filled: true,
-                fillColor: AppTheme.bg2,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFFF7700))),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Отмена', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF7700)),
-            onPressed: () async {
-              final text = controller.text.trim();
-              if (text.isEmpty) return;
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Запуск синхронизации SoundCloud...')),
-              );
-              try {
-                await _apiService.connectSoundCloud(text);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('SoundCloud успешно подключен!'), backgroundColor: AppTheme.accent),
-                  );
-                  _loadAllData();
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.redAccent),
-                  );
-                }
-              }
-            },
-            child: const Text('Синхронизировать', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildProfileStat(String label, int count) {
     return Column(
@@ -954,8 +773,68 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'Обновить',
             onPressed: _loadAllData,
           ),
-          GestureDetector(
-            onTap: _showProfileModal,
+          PopupMenuButton<String>(
+            offset: const Offset(0, 48),
+            color: AppTheme.bg2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            onSelected: (val) {
+              if (val == 'profile') {
+                _openUserProfile(widget.user.id);
+              } else if (val == 'settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(
+                      user: widget.user,
+                      audioHandler: widget.audioHandler,
+                      onRefreshRequired: _loadAllData,
+                    ),
+                  ),
+                );
+              } else if (val == 'modal') {
+                _showProfileModal();
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'profile',
+                child: Row(
+                  children: [
+                    const Icon(Icons.person_rounded, color: AppTheme.accentLight, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        widget.user.displayName,
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings_rounded, color: AppTheme.accentLight, size: 20),
+                    SizedBox(width: 12),
+                    Text('Настройки', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'modal',
+                child: Row(
+                  children: [
+                    Icon(Icons.account_circle_outlined, color: AppTheme.textSecondary, size: 20),
+                    SizedBox(width: 12),
+                    Text('Сводка профиля', style: TextStyle(color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
             child: Container(
               margin: const EdgeInsets.only(right: 16, left: 6),
               padding: const EdgeInsets.all(2.5),
@@ -1238,6 +1117,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return TrackTile(
                     track: track,
                     isPlaying: current?.id == track.id,
+                    audioHandler: widget.audioHandler,
                     onTap: () {
                       widget.audioHandler.playTrackList(_globalTracks, _globalTracks.indexOf(track));
                     },
@@ -1249,7 +1129,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 24),
 
           if (_historyTracks.isNotEmpty) ...[
-            const Text('🕒 Недавно слушали', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+            const Text('Недавно слушали', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
             const SizedBox(height: 12),
             ..._historyTracks.take(5).map((track) {
               return ValueListenableBuilder<Track?>(
@@ -1258,6 +1138,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return TrackTile(
                     track: track,
                     isPlaying: current?.id == track.id,
+                    audioHandler: widget.audioHandler,
                     onTap: () {
                       widget.audioHandler.playTrackList(_historyTracks, _historyTracks.indexOf(track));
                     },
@@ -1494,6 +1375,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return TrackTile(
                     track: track,
                     isPlaying: current?.id == track.id,
+                    audioHandler: widget.audioHandler,
                     onTap: () => widget.audioHandler.playTrackList(results, i),
                   );
                 },
@@ -1637,6 +1519,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     return TrackTile(
                       track: track,
                       isPlaying: current?.id == track.id,
+                      audioHandler: widget.audioHandler,
                       onTap: () {
                         widget.audioHandler.playTrackList(_globalTracks, i);
                       },
@@ -1709,6 +1592,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return TrackTile(
                     track: track,
                     isPlaying: current?.id == track.id,
+                    audioHandler: widget.audioHandler,
                     onTap: () => widget.audioHandler.playTrackList(_serverSearchResults, i),
                   );
                 },
@@ -2133,6 +2017,7 @@ class _HomeScreenState extends State<HomeScreen> {
             return TrackTile(
               track: track,
               isPlaying: current?.id == track.id,
+              audioHandler: widget.audioHandler,
               onTap: () => widget.audioHandler.playTrackList(list, i),
             );
           },
@@ -2249,84 +2134,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openPlaylistTracks(Playlist playlist) async {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.bg1,
-      isScrollControlled: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.7,
-          maxChildSize: 0.95,
-          minChildSize: 0.5,
-          builder: (ctx, scrollController) {
-            return FutureBuilder<List<Track>>(
-              future: _apiService.getPlaylistTracks(playlist.id),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accent)));
-                }
-                final tracks = snapshot.data ?? [];
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(playlist.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                                Text('${tracks.length} треков', style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                              ],
-                            ),
-                          ),
-                          if (tracks.isNotEmpty)
-                            FilledButton.icon(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                widget.audioHandler.playTrackList(tracks, 0);
-                              },
-                              icon: const Icon(Icons.play_arrow_rounded),
-                              label: const Text('Играть'),
-                              style: FilledButton.styleFrom(backgroundColor: AppTheme.accent, foregroundColor: AppTheme.accentText),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const Divider(color: AppTheme.bg4),
-                    Expanded(
-                      child: tracks.isEmpty
-                          ? const Center(child: Text('В плейлисте нет треков', style: TextStyle(color: AppTheme.textMuted)))
-                          : ListView.builder(
-                              itemExtent: 66.0,
-                              controller: scrollController,
-                              itemCount: tracks.length,
-                              itemBuilder: (context, i) {
-                                final track = tracks[i];
-                                return TrackTile(
-                                  track: track,
-                                  isPlaying: widget.audioHandler.currentTrack?.id == track.id,
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    widget.audioHandler.playTrackList(tracks, i);
-                                  },
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                );
-              },
-            );
+    final deleted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlaylistDetailScreen(
+          playlist: playlist,
+          audioHandler: widget.audioHandler,
+          onPlaylistDeleted: () {
+            setState(() {
+              _playlists.removeWhere((p) => p.id == playlist.id);
+            });
           },
-        );
-      },
+        ),
+      ),
     );
+    if (deleted == true) {
+      setState(() {
+        _playlists.removeWhere((p) => p.id == playlist.id);
+      });
+    }
   }
 
   // ================= 4. ЛЮБИМЫЕ ТРЕКИ =================
@@ -2398,6 +2224,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         return TrackTile(
                           track: track,
                           isPlaying: current?.id == track.id,
+                          audioHandler: widget.audioHandler,
                           onTap: () => widget.audioHandler.playTrackList(_likedTracks, i),
                         );
                       },
@@ -2643,6 +2470,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     return TrackTile(
                       track: track,
                       isPlaying: current?.id == track.id,
+                      audioHandler: widget.audioHandler,
                       onTap: () => widget.audioHandler.playTrackList(drop.tracks, drop.tracks.indexOf(track)),
                     );
                   },

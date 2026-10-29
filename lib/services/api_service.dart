@@ -258,6 +258,56 @@ class ApiService {
     }
   }
 
+  /// Переименование плейлиста
+  Future<Playlist> updatePlaylist(int playlistId, String name) async {
+    try {
+      final response = await _dio.put('/playlists/$playlistId', data: {'name': name});
+      return Playlist.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Не удалось обновить плейлист: $e');
+    }
+  }
+
+  /// Удаление плейлиста
+  Future<bool> deletePlaylist(int playlistId) async {
+    try {
+      await _dio.delete('/playlists/$playlistId');
+      return true;
+    } catch (e) {
+      throw Exception('Не удалось удалить плейлист: $e');
+    }
+  }
+
+  /// Добавление трека в плейлист
+  Future<bool> addTrackToPlaylist(int playlistId, int trackId) async {
+    try {
+      await _dio.post('/playlists/$playlistId/tracks', data: {'track_id': trackId});
+      return true;
+    } catch (e) {
+      throw Exception('Не удалось добавить трек в плейлист: $e');
+    }
+  }
+
+  /// Удаление трека из плейлиста
+  Future<bool> removeTrackFromPlaylist(int playlistId, int trackId) async {
+    try {
+      await _dio.delete('/playlists/$playlistId/tracks/$trackId');
+      return true;
+    } catch (e) {
+      throw Exception('Не удалось убрать трек из плейлиста: $e');
+    }
+  }
+
+  /// Сохранение нового порядка треков в плейлисте
+  Future<bool> reorderPlaylistTracks(int playlistId, List<int> trackIds) async {
+    try {
+      await _dio.put('/playlists/$playlistId/reorder', data: {'track_ids': trackIds});
+      return true;
+    } catch (e) {
+      throw Exception('Не удалось изменить порядок треков: $e');
+    }
+  }
+
   /// Получение списка пользователей / авторов с сайта
   Future<List<GlobalUser>> getGlobalUsers({int limit = 50}) async {
     try {

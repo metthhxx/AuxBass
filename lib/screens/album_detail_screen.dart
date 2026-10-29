@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/audio_player_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/mini_player.dart';
+import '../widgets/track_action_sheet.dart';
 import 'artist_detail_screen.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
@@ -306,9 +307,17 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       onTap: () {
                         widget.audioHandler.playTrackList(album.tracks, index);
                       },
+                      onLongPress: () {
+                        TrackActionSheet.show(
+                          context,
+                          track: track,
+                          audioHandler: widget.audioHandler,
+                          onLikeChanged: () => setState(() {}),
+                        );
+                      },
                       borderRadius: BorderRadius.circular(12),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                         child: Row(
                           children: [
                             // Номер трека
@@ -357,6 +366,20 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                             Text(
                               track.formattedDuration,
                               style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                            ),
+
+                            // Кнопка действий
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.more_vert_rounded, color: AppTheme.textMuted, size: 20),
+                              onPressed: () {
+                                TrackActionSheet.show(
+                                  context,
+                                  track: track,
+                                  audioHandler: widget.audioHandler,
+                                  onLikeChanged: () => setState(() {}),
+                                );
+                              },
                             ),
                           ],
                         ),
