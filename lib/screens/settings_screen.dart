@@ -371,27 +371,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       leading: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: currentStyle == PlayerStyle.web ? AppTheme.accent.withAlpha(40) : AppTheme.bg3,
+                          color: currentStyle == PlayerStyle.djx ? const Color(0xFF00FF66).withAlpha(40) : AppTheme.bg3,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.public_rounded, color: AppTheme.accent, size: 20),
+                        child: const Icon(Icons.album_rounded, color: Color(0xFF00FF66), size: 20),
                       ),
                       title: const Text(
-                        'Веб-плеер AuxBass (как на сайте)',
+                        'DJX-4000 (Виниловая вертушка как на сайте)',
                         style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
                       ),
                       subtitle: const Padding(
                         padding: EdgeInsets.only(top: 4),
                         child: Text(
-                          'Мобильная версия сайта aux.ganj4craft.ru: темный неоморфизм, изумрудный ореол обложки, встроенная громкость, текст песен и очередь.',
+                          'Точная копия плеера со скриншота: вращающийся винил, тонарм, CRT-дисплей трека, DJ-кнопки SYNC/CUE/LOOP и ползунок громкости.',
                           style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                         ),
                       ),
                       trailing: Icon(
-                        currentStyle == PlayerStyle.web ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                        color: currentStyle == PlayerStyle.web ? AppTheme.accent : AppTheme.textMuted,
+                        currentStyle == PlayerStyle.djx ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                        color: currentStyle == PlayerStyle.djx ? const Color(0xFF00FF66) : AppTheme.textMuted,
                       ),
-                      onTap: () => PlayerSettingsService.setPlayerStyle(PlayerStyle.web),
+                      onTap: () => PlayerSettingsService.setPlayerStyle(PlayerStyle.djx),
                     ),
                     const Divider(height: 1, indent: 56, color: AppTheme.bg4),
                     ListTile(

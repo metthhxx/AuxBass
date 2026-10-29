@@ -2,15 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum PlayerStyle {
+  djx,    // DJX-4000 Винил / Турнтабл с сайта
   native, // Стандартный плеер (Material You)
-  web,    // Веб-стиль AuxBass (Неоморфизм / Cyber Glass)
 }
 
 class PlayerSettingsService {
   static const String _key = 'auxbass_player_style';
 
   static final ValueNotifier<PlayerStyle> playerStyleNotifier =
-      ValueNotifier<PlayerStyle>(PlayerStyle.web);
+      ValueNotifier<PlayerStyle>(PlayerStyle.djx);
 
   static Future<void> init() async {
     try {
@@ -18,11 +18,9 @@ class PlayerSettingsService {
       final saved = prefs.getString(_key);
       if (saved == 'native') {
         playerStyleNotifier.value = PlayerStyle.native;
-      } else if (saved == 'web') {
-        playerStyleNotifier.value = PlayerStyle.web;
       } else {
-        // По умолчанию веб-плеер, так как пользователь запросил веб-стиль
-        playerStyleNotifier.value = PlayerStyle.web;
+        // По умолчанию DJX-4000 с винилом и DJ-пультом
+        playerStyleNotifier.value = PlayerStyle.djx;
       }
     } catch (_) {}
   }
@@ -31,7 +29,7 @@ class PlayerSettingsService {
     playerStyleNotifier.value = style;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_key, style == PlayerStyle.web ? 'web' : 'native');
+      await prefs.setString(_key, style == PlayerStyle.native ? 'native' : 'djx');
     } catch (_) {}
   }
 }
