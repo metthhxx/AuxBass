@@ -426,6 +426,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Column(
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: PlayerSettingsService.scratchEnabledNotifier,
+                  builder: (context, scratchEnabled, _) {
+                    return SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                      secondary: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: scratchEnabled ? const Color(0xFF00FF66).withAlpha(40) : AppTheme.bg3,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.touch_app_rounded, color: Color(0xFF00FF66), size: 20),
+                      ),
+                      title: const Text(
+                        'Интерактивный скретч винила',
+                        style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
+                      ),
+                      subtitle: const Text(
+                        'Вращение и скретчинг пластинки пальцем на пульте DJX-4000',
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                      activeTrackColor: const Color(0xFF00FF66),
+                      value: scratchEnabled,
+                      onChanged: (val) => PlayerSettingsService.setScratchEnabled(val),
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 56, color: AppTheme.bg4),
+                ValueListenableBuilder<bool>(
+                  valueListenable: PlayerSettingsService.dynamicThemeNotifier,
+                  builder: (context, dynamicTheme, _) {
+                    return SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                      secondary: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: dynamicTheme ? Colors.purpleAccent.withAlpha(40) : AppTheme.bg3,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.palette_rounded, color: Colors.purpleAccent, size: 20),
+                      ),
+                      title: const Text(
+                        'Динамическая тема по обложке',
+                        style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
+                      ),
+                      subtitle: const Text(
+                        'Адаптивная подсветка и фоновые оттенки под цветовую гамму трека',
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                      activeTrackColor: AppTheme.accent,
+                      value: dynamicTheme,
+                      onChanged: (val) => PlayerSettingsService.setDynamicThemeEnabled(val),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
 
           // Раздел: Воспроизведение и кэш
           _buildSectionHeader('Память и воспроизведение'),

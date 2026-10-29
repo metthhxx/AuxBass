@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../models/track.dart';
 import '../screens/artist_detail_screen.dart';
 import '../services/api_service.dart';
@@ -26,6 +28,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   bool _isLikeLoading = false;
   late final AnimationController _spinController;
 
+  // Динамическая палитра обложки
+  Color? _dominantColor;
+  String? _lastCoverUrl;
+
+  // Интерактивный скретч винила
+  bool _isScratching = false;
+  double _scratchAngle = 0.0;
+  double _lastTouchAngle = 0.0;
+  bool _wasPlayingBeforeScratch = false;
+  double _hapticAccumulator = 0.0;
+
   String _formatTime(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
@@ -43,12 +56,60 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (widget.audioHandler.player.playing) {
       _spinController.repeat();
     }
+
+    PlayerSettingsService.dynamicThemeNotifier.addListener(_onDynamicThemeChanged);
+    final initialTrack = widget.audioHandler.currentTrack;
+    if (initialTrack != null) {
+      _updateCoverPalette(initialTrack);
+    }
   }
 
   @override
   void dispose() {
+    PlayerSettingsService.dynamicThemeNotifier.removeListener(_onDynamicThemeChanged);
     _spinController.dispose();
     super.dispose();
+  }
+
+  void _onDynamicThemeChanged() {
+    final track = widget.audioHandler.currentTrack;
+    if (track != null) {
+      _lastCoverUrl = null;
+      _updateCoverPalette(track);
+    }
+  }
+
+  Future<void> _updateCoverPalette(Track track) async {
+    if (!PlayerSettingsService.dynamicThemeNotifier.value) {
+      if (_dominantColor != null) {
+        setState(() => _dominantColor = null);
+      }
+      return;
+    }
+    final url = track.fullCoverUrl;
+    if (url == null) {
+      if (_dominantColor != null) {
+        setState(() => _dominantColor = null);
+      }
+      return;
+    }
+    if (url == _lastCoverUrl) return;
+    _lastCoverUrl = url;
+
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        CachedNetworkImageProvider(url),
+        maximumColorCount: 16,
+      );
+      final color = palette.vibrantColor?.color ??
+          palette.dominantColor?.color ??
+          palette.lightVibrantColor?.color;
+      if (mounted && color != null) {
+        setState(() {
+          _dominantColor = color;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _toggleLike(Track currentTrack) async {
@@ -200,6 +261,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               );
             }
 
+            _updateCoverPalette(currentTrack);
+
             if (style == PlayerStyle.djx) {
               return _buildDjxTurntablePlayer(currentTrack);
             } else {
@@ -253,14 +316,18 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               }
             },
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: Alignment(0, -0.6),
+                  center: const Alignment(0, -0.6),
                   radius: 1.2,
                   colors: [
-                    Color(0xFF131722),
-                    Color(0xFF0C0E14),
-                    Color(0xFF07080B),
+                    _dominantColor != null
+                        ? Color.lerp(const Color(0xFF131722), _dominantColor!, 0.35)!
+                        : const Color(0xFF131722),
+                    _dominantColor != null
+                        ? Color.lerp(const Color(0xFF0C0E14), _dominantColor!, 0.18)!
+                        : const Color(0xFF0C0E14),
+                    const Color(0xFF07080B),
                   ],
                 ),
               ),
@@ -424,10 +491,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         decoration: BoxDecoration(
                           color: const Color(0xFF080D14),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF142233), width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(color: Colors.black87, blurRadius: 10, offset: Offset(0, 3)),
-                            BoxShadow(color: Color(0x1F4DC3FF), blurRadius: 12),
+                          border: Border.all(
+                            color: _dominantColor != null
+                                ? Color.lerp(const Color(0xFF142233), _dominantColor!, 0.4)!
+                                : const Color(0xFF142233),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            const BoxShadow(color: Colors.black87, blurRadius: 10, offset: Offset(0, 3)),
+                            BoxShadow(
+                              color: _dominantColor != null
+                                  ? _dominantColor!.withAlpha(45)
+                                  : const Color(0x1F4DC3FF),
+                              blurRadius: 12,
+                            ),
                           ],
                         ),
                         child: Stack(
@@ -804,97 +881,181 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFF0B0C0F),
-              boxShadow: const [
-                BoxShadow(color: Colors.black87, blurRadius: 24, offset: Offset(0, 8)),
-                BoxShadow(color: Color(0x1F00FF66), blurRadius: 36),
+              boxShadow: [
+                const BoxShadow(color: Colors.black87, blurRadius: 24, offset: Offset(0, 8)),
+                BoxShadow(
+                  color: _dominantColor != null ? _dominantColor!.withAlpha(35) : const Color(0x1F00FF66),
+                  blurRadius: 36,
+                ),
               ],
               border: Border.all(color: const Color(0xFF1E222D), width: 2),
             ),
           ),
 
-          // Вращающаяся пластинка
-          RotationTransition(
-            turns: _spinController,
-            child: Container(
-              width: discSize,
-              height: discSize,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [Color(0xFF252830), Color(0xFF121418), Color(0xFF0A0B0D)],
-                  stops: [0.0, 0.65, 1.0],
-                ),
-                boxShadow: [
-                  BoxShadow(color: Colors.black54, blurRadius: 10),
-                ],
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _VinylPlatterPainter(),
-                    ),
-                  ),
+          // Вращающаяся пластинка с поддержкой интерактивного скретча
+          ValueListenableBuilder<bool>(
+            valueListenable: PlayerSettingsService.scratchEnabledNotifier,
+            builder: (context, scratchEnabled, _) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: !scratchEnabled ? null : (details) {
+                  final center = Offset(discSize / 2, discSize / 2);
+                  final offset = details.localPosition - center;
+                  _lastTouchAngle = atan2(offset.dy, offset.dx);
+                  _isScratching = true;
+                  _wasPlayingBeforeScratch = widget.audioHandler.player.playing;
+                  _scratchAngle = _spinController.value * 2 * pi;
+                  _hapticAccumulator = 0.0;
+                  if (_wasPlayingBeforeScratch) {
+                    widget.audioHandler.player.pause();
+                  }
+                  _spinController.stop();
+                  HapticFeedback.selectionClick();
+                  setState(() {});
+                },
+                onPanUpdate: !scratchEnabled ? null : (details) {
+                  if (!_isScratching) return;
+                  final center = Offset(discSize / 2, discSize / 2);
+                  final offset = details.localPosition - center;
+                  final currentAngle = atan2(offset.dy, offset.dx);
+                  var delta = currentAngle - _lastTouchAngle;
+                  if (delta > pi) delta -= 2 * pi;
+                  if (delta < -pi) delta += 2 * pi;
+                  _lastTouchAngle = currentAngle;
+                  _scratchAngle += delta;
 
-                  // Яблоко винила с обложкой
-                  Container(
-                    width: labelSize,
-                    height: labelSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFF222222), width: 2.5),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black87, blurRadius: 6),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: currentTrack.fullCoverUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: currentTrack.fullCoverUrl!,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(color: AppTheme.bg3),
-                              errorWidget: (_, __, ___) => Container(
-                                color: AppTheme.bg3,
-                                child: const Icon(Icons.music_note_rounded, color: AppTheme.textMuted),
-                              ),
-                            )
-                          : Container(
-                              color: AppTheme.bg3,
-                              child: const Icon(Icons.music_note_rounded, color: AppTheme.textMuted),
-                            ),
-                    ),
-                  ),
+                  _hapticAccumulator += delta.abs();
+                  if (_hapticAccumulator > 0.35) {
+                    _hapticAccumulator = 0.0;
+                    HapticFeedback.selectionClick();
+                  }
 
-                  // Центральный шпиндель
-                  Container(
-                    width: 18,
-                    height: 18,
+                  // 33 1/3 RPM = 1 оборот за 1.8с (1800мс)
+                  final scrubMs = ((delta / (2 * pi)) * 1800).toInt();
+                  final currentPos = widget.audioHandler.player.position;
+                  final total = widget.audioHandler.player.duration ?? Duration(seconds: currentTrack.duration);
+                  final targetMs = (currentPos.inMilliseconds + scrubMs).clamp(0, total.inMilliseconds);
+                  widget.audioHandler.seek(Duration(milliseconds: targetMs));
+
+                  setState(() {});
+                },
+                onPanEnd: !scratchEnabled ? null : (_) {
+                  if (!_isScratching) return;
+                  _isScratching = false;
+                  final turns = (_scratchAngle / (2 * pi)) % 1.0;
+                  _spinController.value = turns < 0 ? turns + 1.0 : turns;
+                  if (_wasPlayingBeforeScratch) {
+                    widget.audioHandler.player.play();
+                    _spinController.repeat();
+                  }
+                  setState(() {});
+                },
+                onPanCancel: !scratchEnabled ? null : () {
+                  if (!_isScratching) return;
+                  _isScratching = false;
+                  final turns = (_scratchAngle / (2 * pi)) % 1.0;
+                  _spinController.value = turns < 0 ? turns + 1.0 : turns;
+                  if (_wasPlayingBeforeScratch) {
+                    widget.audioHandler.player.play();
+                    _spinController.repeat();
+                  }
+                  setState(() {});
+                },
+                child: AnimatedBuilder(
+                  animation: _spinController,
+                  builder: (context, child) {
+                    final angle = _isScratching ? _scratchAngle : (_spinController.value * 2 * pi);
+                    return Transform.rotate(
+                      angle: angle,
+                      child: child,
+                    );
+                  },
+                  child: Container(
+                    width: discSize,
+                    height: discSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: const RadialGradient(
-                        colors: [Color(0xFFE9ECEF), Color(0xFF495057)],
+                        colors: [Color(0xFF252830), Color(0xFF121418), Color(0xFF0A0B0D)],
+                        stops: [0.0, 0.65, 1.0],
                       ),
-                      border: Border.all(color: const Color(0xFF212529), width: 1.5),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black54, blurRadius: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _isScratching ? const Color(0x6600FF66) : Colors.black54,
+                          blurRadius: _isScratching ? 16 : 10,
+                        ),
                       ],
                     ),
-                    child: Center(
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.black,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _VinylPlatterPainter(),
+                          ),
                         ),
-                      ),
+
+                        // Яблоко винила с обложкой
+                        Container(
+                          width: labelSize,
+                          height: labelSize,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: const Color(0xFF222222), width: 2.5),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black87, blurRadius: 6),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: currentTrack.fullCoverUrl != null
+                                ? CachedNetworkImage(
+                                    imageUrl: currentTrack.fullCoverUrl!,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Container(color: AppTheme.bg3),
+                                    errorWidget: (_, __, ___) => Container(
+                                      color: AppTheme.bg3,
+                                      child: const Icon(Icons.music_note_rounded, color: AppTheme.textMuted),
+                                    ),
+                                  )
+                                : Container(
+                                    color: AppTheme.bg3,
+                                    child: const Icon(Icons.music_note_rounded, color: AppTheme.textMuted),
+                                  ),
+                          ),
+                        ),
+
+                        // Центральный шпиндель
+                        Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const RadialGradient(
+                              colors: [Color(0xFFE9ECEF), Color(0xFF495057)],
+                            ),
+                            border: Border.all(color: const Color(0xFF212529), width: 1.5),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black54, blurRadius: 3),
+                            ],
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
 
           // Тонарм
@@ -1141,25 +1302,37 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           ),
         ],
       ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onHorizontalDragEnd: (details) {
-          final v = details.primaryVelocity;
-          if (v != null) {
-            if (v < -200) {
-              widget.audioHandler.skipToNext();
-            } else if (v > 200) {
-              widget.audioHandler.skipToPrevious();
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              _dominantColor != null ? _dominantColor!.withAlpha(50) : AppTheme.bg1,
+              AppTheme.bg0,
+              AppTheme.bg0,
+            ],
+          ),
+        ),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragEnd: (details) {
+            final v = details.primaryVelocity;
+            if (v != null) {
+              if (v < -200) {
+                widget.audioHandler.skipToNext();
+              } else if (v > 200) {
+                widget.audioHandler.skipToPrevious();
+              }
             }
-          }
-        },
-        onVerticalDragEnd: (details) {
-          final v = details.primaryVelocity;
-          if (v != null && v > 150) {
-            Navigator.of(context).pop();
-          }
-        },
-        child: SafeArea(
+          },
+          onVerticalDragEnd: (details) {
+            final v = details.primaryVelocity;
+            if (v != null && v > 150) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 16.0),
             child: Column(
@@ -1279,9 +1452,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       children: [
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: AppTheme.accent,
+                            activeTrackColor: _dominantColor ?? AppTheme.accent,
                             inactiveTrackColor: AppTheme.bg4,
-                            thumbColor: AppTheme.accentLight,
+                            thumbColor: _dominantColor != null
+                                ? Color.lerp(Colors.white, _dominantColor!, 0.7)
+                                : AppTheme.accentLight,
                             trackHeight: 4,
                             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                             overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
@@ -1317,7 +1492,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     IconButton(
                       icon: Icon(
                         Icons.shuffle_rounded,
-                        color: widget.audioHandler.isShuffle ? AppTheme.accent : AppTheme.textMuted,
+                        color: widget.audioHandler.isShuffle ? (_dominantColor ?? AppTheme.accent) : AppTheme.textMuted,
                         size: 26,
                       ),
                       onPressed: () {
@@ -1336,6 +1511,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         final isPlaying = state?.playing ?? false;
                         final isBuffering = state?.processingState == ProcessingState.buffering ||
                             state?.processingState == ProcessingState.loading;
+                        final btnColor = _dominantColor ?? AppTheme.accent;
+                        final btnTextColor = _dominantColor != null
+                            ? (_dominantColor!.computeLuminance() > 0.5 ? Colors.black : Colors.white)
+                            : AppTheme.accentText;
 
                         return GestureDetector(
                           onTap: () {
@@ -1348,32 +1527,32 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           child: Container(
                             width: 68,
                             height: 68,
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppTheme.accent,
+                              color: btnColor,
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppTheme.accentGlow,
+                                  color: btnColor.withAlpha(120),
                                   blurRadius: 16,
-                                  offset: Offset(0, 6),
+                                  offset: const Offset(0, 6),
                                 ),
                               ],
                             ),
                             child: isBuffering
-                                ? const Center(
+                                ? Center(
                                     child: SizedBox(
                                       width: 28,
                                       height: 28,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 3,
-                                        valueColor: AlwaysStoppedAnimation(AppTheme.accentText),
+                                        valueColor: AlwaysStoppedAnimation(btnTextColor),
                                       ),
                                     ),
                                   )
                                 : Icon(
                                     isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                     size: 40,
-                                    color: AppTheme.accentText,
+                                    color: btnTextColor,
                                   ),
                           ),
                         );
@@ -1388,7 +1567,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         widget.audioHandler.loopMode == LoopMode.one
                             ? Icons.repeat_one_rounded
                             : Icons.repeat_rounded,
-                        color: widget.audioHandler.loopMode != LoopMode.off ? AppTheme.accent : AppTheme.textMuted,
+                        color: widget.audioHandler.loopMode != LoopMode.off ? (_dominantColor ?? AppTheme.accent) : AppTheme.textMuted,
                         size: 26,
                       ),
                       onPressed: () {
@@ -1403,8 +1582,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // --- Custom Painters для винила и CRT-экрана ---
